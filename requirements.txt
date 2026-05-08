@@ -1,4 +1,1 @@
-# For running locally
-# No external dependencies required - uses Python standard library
-# Optional for development:
-# openpyxl>=3.1.0  # For Excel file generation
+psycopg2-binary>=2.9.0  # PostgreSQL database adapter

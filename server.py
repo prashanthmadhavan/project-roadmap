@@ -6,10 +6,10 @@ import secrets
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 import time
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
-DATA_DIR = '.'
-PROJECTS_FILE = os.path.join(DATA_DIR, 'projects.json')
-USERS_FILE = os.path.join(DATA_DIR, 'users.json')
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://localhost:5432/task_gantt')
 
 class AuthHandler(SimpleHTTPRequestHandler):
     """Handle authentication and project management"""
@@ -17,29 +17,119 @@ class AuthHandler(SimpleHTTPRequestHandler):
     # Store active sessions: token -> username
     sessions = {}
 
+    def get_db_connection(self):
+        """Get database connection"""
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            return conn
+        except psycopg2.Error as e:
+            print(f"Database connection error: {e}")
+            raise
+
+    def init_db(self):
+        """Initialize database schema"""
+        conn = self.get_db_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Create users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    password VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create projects table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id VARCHAR(255) PRIMARY KEY,
+                    owner VARCHAR(255) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    created_at DATE DEFAULT CURRENT_DATE,
+                    FOREIGN KEY (owner) REFERENCES users(username)
+                )
+            ''')
+            
+            # Create tasks table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id VARCHAR(255) PRIMARY KEY,
+                    project_id VARCHAR(255) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    dependencies TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            conn.commit()
+        except psycopg2.Error as e:
+            conn.rollback()
+            print(f"Error initializing database: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+
     def load_projects(self):
-        """Load all projects from file"""
-        if os.path.exists(PROJECTS_FILE):
-            with open(PROJECTS_FILE, 'r') as f:
-                return json.load(f)
-        return []
+        """Load all projects from database"""
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute('SELECT * FROM projects')
+            projects = cursor.fetchall()
+            
+            # Load tasks for each project
+            for project in projects:
+                cursor.execute('SELECT * FROM tasks WHERE project_id = %s', (project['id'],))
+                tasks = cursor.fetchall()
+                project['tasks'] = [dict(t) for t in tasks]
+                # Convert dependencies from JSON string to list
+                for task in project['tasks']:
+                    if task.get('dependencies'):
+                        task['dependencies'] = json.loads(task['dependencies'])
+                    else:
+                        task['dependencies'] = []
+            
+            cursor.close()
+            conn.close()
+            
+            return [dict(p) for p in projects]
+        except psycopg2.Error as e:
+            print(f"Error loading projects: {e}")
+            return []
 
     def save_projects(self, projects):
-        """Save all projects to file"""
-        with open(PROJECTS_FILE, 'w') as f:
-            json.dump(projects, f, indent=2)
+        """Save projects to database (not used anymore, but kept for compatibility)"""
+        # Projects are saved directly to DB in CRUD operations
+        pass
 
     def load_users(self):
-        """Load all users from file"""
-        if os.path.exists(USERS_FILE):
-            with open(USERS_FILE, 'r') as f:
-                return json.load(f)
-        return []
+        """Load all users from database"""
+        try:
+            conn = self.get_db_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            
+            cursor.execute('SELECT username, password, created_at FROM users')
+            users = cursor.fetchall()
+            
+            cursor.close()
+            conn.close()
+            
+            return [dict(u) for u in users]
+        except psycopg2.Error as e:
+            print(f"Error loading users: {e}")
+            return []
 
     def save_users(self, users):
-        """Save all users to file"""
-        with open(USERS_FILE, 'w') as f:
-            json.dump(users, f, indent=2)
+        """Save users to database (not used anymore, but kept for compatibility)"""
+        # Users are saved directly to DB in CRUD operations
+        pass
 
     def hash_password(self, password):
         """Hash password with salt"""
@@ -139,30 +229,34 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     self.send_json(400, {'error': 'Password must contain lowercase letters'})
                     return
                 
-                # Check if username already exists
-                users = self.load_users()
-                if any(u['username'] == username for u in users):
+                # Check if username already exists and create new user in database
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                
+                try:
+                    # Try to insert the user
+                    hashed_password = self.hash_password(password)
+                    cursor.execute(
+                        'INSERT INTO users (username, password) VALUES (%s, %s)',
+                        (username, hashed_password)
+                    )
+                    conn.commit()
+                    
+                    # Create session token
+                    token = secrets.token_urlsafe(32)
+                    self.sessions[token] = username
+                    
+                    self.send_json(201, {
+                        'username': username,
+                        'token': token,
+                        'message': 'Account created successfully'
+                    })
+                except psycopg2.IntegrityError:
+                    conn.rollback()
                     self.send_json(400, {'error': 'Username already exists'})
-                    return
-                
-                # Create new user
-                new_user = {
-                    'username': username,
-                    'password': self.hash_password(password),
-                    'createdAt': time.strftime('%Y-%m-%d %H:%M:%S')
-                }
-                users.append(new_user)
-                self.save_users(users)
-                
-                # Create session token
-                token = secrets.token_urlsafe(32)
-                self.sessions[token] = username
-                
-                self.send_json(201, {
-                    'username': username,
-                    'token': token,
-                    'message': 'Account created successfully'
-                })
+                finally:
+                    cursor.close()
+                    conn.close()
             except json.JSONDecodeError:
                 self.send_json(400, {'error': 'Invalid JSON'})
             except Exception as e:
@@ -175,8 +269,13 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 username = data.get('username', '')
                 password = data.get('password', '')
                 
-                users = self.load_users()
-                user = next((u for u in users if u['username'] == username), None)
+                conn = self.get_db_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                cursor.execute('SELECT username, password FROM users WHERE username = %s', (username,))
+                user = cursor.fetchone()
+                cursor.close()
+                conn.close()
                 
                 if not user or not self.verify_password(password, user['password']):
                     self.send_json(401, {'error': 'Invalid username or password'})
@@ -212,19 +311,27 @@ class AuthHandler(SimpleHTTPRequestHandler):
             
             try:
                 data = json.loads(body)
-                projects = self.load_projects()
+                project_id = str(int(time.time() * 1000))
+                
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                
+                cursor.execute(
+                    'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                    (project_id, username, data.get('name'), data.get('description', ''))
+                )
+                conn.commit()
+                cursor.close()
+                conn.close()
                 
                 new_project = {
-                    'id': str(int(time.time() * 1000)),
+                    'id': project_id,
                     'owner': username,
                     'name': data.get('name'),
                     'description': data.get('description', ''),
-                    'createdAt': time.strftime('%Y-%m-%d'),
+                    'created_at': time.strftime('%Y-%m-%d'),
                     'tasks': []
                 }
-                
-                projects.append(new_project)
-                self.save_projects(projects)
                 
                 self.send_json(201, new_project)
             except Exception as e:
@@ -240,23 +347,39 @@ class AuthHandler(SimpleHTTPRequestHandler):
             project_id = parsed_path.path.split('/')[3]
             try:
                 data = json.loads(body)
-                projects = self.load_projects()
-                project = next((p for p in projects if p['id'] == project_id and p['owner'] == username), None)
                 
-                if not project:
+                conn = self.get_db_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Verify project exists and belongs to user
+                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                project = cursor.fetchone()
+                
+                if not project or project['owner'] != username:
+                    cursor.close()
+                    conn.close()
                     self.send_json(404, {'error': 'Project not found'})
                     return
                 
+                task_id = str(int(time.time() * 1000))
+                dependencies_json = json.dumps(data.get('dependencies', []))
+                
+                cursor.execute(
+                    'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
+                    (task_id, project_id, data.get('name'), data.get('startDate'), data.get('endDate'), dependencies_json)
+                )
+                conn.commit()
+                
                 new_task = {
-                    'id': str(int(time.time() * 1000)),
+                    'id': task_id,
                     'name': data.get('name'),
                     'startDate': data.get('startDate'),
                     'endDate': data.get('endDate'),
                     'dependencies': data.get('dependencies', [])
                 }
                 
-                project['tasks'].append(new_task)
-                self.save_projects(projects)
+                cursor.close()
+                conn.close()
                 
                 self.send_json(201, new_task)
             except Exception as e:
@@ -279,18 +402,35 @@ class AuthHandler(SimpleHTTPRequestHandler):
             project_id = path_parts[3]
             try:
                 data = json.loads(body)
-                projects = self.load_projects()
-                project = next((p for p in projects if p['id'] == project_id and p['owner'] == username), None)
+                
+                conn = self.get_db_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Verify project exists and belongs to user
+                cursor.execute('SELECT * FROM projects WHERE id = %s AND owner = %s', (project_id, username))
+                project = cursor.fetchone()
                 
                 if not project:
+                    cursor.close()
+                    conn.close()
                     self.send_json(404, {'error': 'Project not found'})
                     return
                 
-                project['name'] = data.get('name', project['name'])
-                project['description'] = data.get('description', project['description'])
-                self.save_projects(projects)
+                # Update project
+                cursor.execute(
+                    'UPDATE projects SET name = %s, description = %s WHERE id = %s',
+                    (data.get('name', project['name']), data.get('description', project['description']), project_id)
+                )
+                conn.commit()
                 
-                self.send_json(200, project)
+                # Fetch updated project
+                cursor.execute('SELECT * FROM projects WHERE id = %s', (project_id,))
+                updated_project = cursor.fetchone()
+                
+                cursor.close()
+                conn.close()
+                
+                self.send_json(200, dict(updated_project))
             except Exception as e:
                 self.send_json(400, {'error': str(e)})
         
@@ -300,25 +440,53 @@ class AuthHandler(SimpleHTTPRequestHandler):
             task_id = path_parts[5]
             try:
                 data = json.loads(body)
-                projects = self.load_projects()
-                project = next((p for p in projects if p['id'] == project_id and p['owner'] == username), None)
                 
-                if not project:
+                conn = self.get_db_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                # Verify project exists and belongs to user
+                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                project = cursor.fetchone()
+                
+                if not project or project['owner'] != username:
+                    cursor.close()
+                    conn.close()
                     self.send_json(404, {'error': 'Project not found'})
                     return
                 
-                task = next((t for t in project['tasks'] if t['id'] == task_id), None)
+                # Verify task exists
+                cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
+                task = cursor.fetchone()
+                
                 if not task:
+                    cursor.close()
+                    conn.close()
                     self.send_json(404, {'error': 'Task not found'})
                     return
                 
-                task['name'] = data.get('name', task['name'])
-                task['startDate'] = data.get('startDate', task['startDate'])
-                task['endDate'] = data.get('endDate', task['endDate'])
-                task['dependencies'] = data.get('dependencies', task['dependencies'])
-                self.save_projects(projects)
+                # Update task
+                dependencies_json = json.dumps(data.get('dependencies', task['dependencies'] if task['dependencies'] else []))
+                cursor.execute(
+                    'UPDATE tasks SET name = %s, start_date = %s, end_date = %s, dependencies = %s WHERE id = %s',
+                    (data.get('name', task['name']), data.get('startDate', task['start_date']), data.get('endDate', task['end_date']), dependencies_json, task_id)
+                )
+                conn.commit()
                 
-                self.send_json(200, task)
+                # Fetch updated task
+                cursor.execute('SELECT * FROM tasks WHERE id = %s', (task_id,))
+                updated_task = cursor.fetchone()
+                
+                updated_task_dict = dict(updated_task)
+                # Convert dependencies from JSON string to list
+                if updated_task_dict.get('dependencies'):
+                    updated_task_dict['dependencies'] = json.loads(updated_task_dict['dependencies'])
+                else:
+                    updated_task_dict['dependencies'] = []
+                
+                cursor.close()
+                conn.close()
+                
+                self.send_json(200, updated_task_dict)
             except Exception as e:
                 self.send_json(400, {'error': str(e)})
 
@@ -335,15 +503,24 @@ class AuthHandler(SimpleHTTPRequestHandler):
         if len(path_parts) >= 4 and path_parts[1] == 'api' and path_parts[2] == 'projects' and len(path_parts) == 4:
             project_id = path_parts[3]
             try:
-                projects = self.load_projects()
-                project = next((p for p in projects if p['id'] == project_id and p['owner'] == username), None)
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
                 
-                if not project:
+                # Verify project exists and belongs to user
+                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                project = cursor.fetchone()
+                
+                if not project or project[0] != username:
+                    cursor.close()
+                    conn.close()
                     self.send_json(404, {'error': 'Project not found'})
                     return
                 
-                projects = [p for p in projects if p['id'] != project_id]
-                self.save_projects(projects)
+                # Delete project (tasks will be deleted due to CASCADE)
+                cursor.execute('DELETE FROM projects WHERE id = %s', (project_id,))
+                conn.commit()
+                cursor.close()
+                conn.close()
                 
                 self.send_json(200, {'success': True})
             except Exception as e:
@@ -354,15 +531,34 @@ class AuthHandler(SimpleHTTPRequestHandler):
             project_id = path_parts[3]
             task_id = path_parts[5]
             try:
-                projects = self.load_projects()
-                project = next((p for p in projects if p['id'] == project_id and p['owner'] == username), None)
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
                 
-                if not project:
+                # Verify project exists and belongs to user
+                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                project = cursor.fetchone()
+                
+                if not project or project[0] != username:
+                    cursor.close()
+                    conn.close()
                     self.send_json(404, {'error': 'Project not found'})
                     return
                 
-                project['tasks'] = [t for t in project['tasks'] if t['id'] != task_id]
-                self.save_projects(projects)
+                # Verify task exists
+                cursor.execute('SELECT id FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
+                task = cursor.fetchone()
+                
+                if not task:
+                    cursor.close()
+                    conn.close()
+                    self.send_json(404, {'error': 'Task not found'})
+                    return
+                
+                # Delete task
+                cursor.execute('DELETE FROM tasks WHERE id = %s', (task_id,))
+                conn.commit()
+                cursor.close()
+                conn.close()
                 
                 self.send_json(200, {'success': True})
             except Exception as e:
@@ -380,7 +576,61 @@ class AuthHandler(SimpleHTTPRequestHandler):
             path = '/index.html'
         return super().translate_path(path)
 
+def init_database():
+    """Initialize database schema on startup"""
+    try:
+        conn = psycopg2.connect(DATABASE_URL)
+        cursor = conn.cursor()
+        
+        # Create users table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create projects table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS projects (
+                id VARCHAR(255) PRIMARY KEY,
+                owner VARCHAR(255) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                created_at DATE DEFAULT CURRENT_DATE,
+                FOREIGN KEY (owner) REFERENCES users(username)
+            )
+        ''')
+        
+        # Create tasks table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                id VARCHAR(255) PRIMARY KEY,
+                project_id VARCHAR(255) NOT NULL,
+                name VARCHAR(255) NOT NULL,
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                dependencies TEXT,
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            )
+        ''')
+        
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Database initialized successfully")
+    except psycopg2.Error as e:
+        print(f"Warning: Could not initialize database: {e}")
+        print("Database will be created on first request")
+    except Exception as e:
+        print(f"Warning: Database initialization error: {e}")
+
 if __name__ == '__main__':
+    # Initialize database on startup
+    init_database()
+    
     port = int(os.environ.get('PORT', 5000))
     host = '0.0.0.0'
     
