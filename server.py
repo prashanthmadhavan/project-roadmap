@@ -1314,6 +1314,12 @@ def init_database():
             cursor.close()
             conn.close()
 
+def hash_password_standalone(password):
+    """Hash password with salt (standalone version for use during initialization)"""
+    salt = secrets.token_hex(16)
+    hash_obj = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+    return f"{salt}${hash_obj.hex()}"
+
 def load_critical_users():
     """Load critical users from config file"""
     try:
@@ -1345,8 +1351,7 @@ def recreate_critical_users():
                 if cursor.fetchone()[0] == 0:
                     # User is missing - recreate it
                     try:
-                        handler = AuthHandler
-                        hashed_password = handler.hash_password(None, password)
+                        hashed_password = hash_password_standalone(password)
                         cursor.execute(
                             'INSERT INTO users (username, password) VALUES (%s, %s)',
                             (username, hashed_password)
@@ -1370,8 +1375,7 @@ def recreate_critical_users():
                 cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', (username,))
                 if cursor.fetchone()[0] == 0:
                     try:
-                        handler = AuthHandler
-                        hashed_password = handler.hash_password(None, password)
+                        hashed_password = hash_password_standalone(password)
                         cursor.execute(
                             'INSERT INTO users (username, password) VALUES (?, ?)',
                             (username, hashed_password)
