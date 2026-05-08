@@ -676,6 +676,16 @@
         let draggedBar = null;
         let dragStartX = null;
         let dragStartY = null;
+        let dragMode = null; // 'horizontal' for date drag, 'vertical' for swimlane drag
+        
+        // Gantt chart scales (updated during renderGantt)
+        let currentXScale = null;
+        let currentYScale = null;
+        let currentWidth = null;
+        let currentHeight = null;
+        let currentMinDate = null;
+        let currentMaxDate = null;
+        let currentTasks = null;
         
         // Session management (15 minutes = 900 seconds)
         const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -717,6 +727,81 @@
         document.addEventListener('click', resetSessionTimer);
         document.addEventListener('scroll', resetSessionTimer);
         document.addEventListener('touchstart', resetSessionTimer);
+
+        // Global drag event listeners (used by renderGantt)
+        document.addEventListener('mousemove', (event) => {
+            if (!draggedBar || !dragStartX || !currentXScale || !currentTasks) return;
+
+            const deltaX = event.clientX - dragStartX;
+            const deltaY = event.clientY - dragStartY;
+            
+            // Determine drag mode based on initial movement
+            if (!dragMode) {
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 5) {
+                    dragMode = 'horizontal';
+                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
+                    dragMode = 'vertical';
+                }
+            }
+            
+            if (dragMode === 'horizontal') {
+                // Horizontal drag: shift task dates
+                const dayWidth = currentWidth / (currentMaxDate - currentMinDate) * 1000 * 60 * 60 * 24;
+                const daysShifted = Math.round(deltaX / dayWidth);
+
+                if (daysShifted === 0) return;
+
+                const startDate = new Date(draggedBar.startDate);
+                const endDate = new Date(draggedBar.endDate);
+                
+                startDate.setDate(startDate.getDate() + daysShifted);
+                endDate.setDate(endDate.getDate() + daysShifted);
+
+                draggedBar.startDate = startDate.toISOString().split('T')[0];
+                draggedBar.endDate = endDate.toISOString().split('T')[0];
+                
+                dragStartX = event.clientX;
+                updateTask(draggedBar.id, draggedBar);
+            } else if (dragMode === 'vertical') {
+                // Vertical drag: reorder tasks (swimlane drag)
+                const taskHeight = currentYScale.bandwidth() + currentYScale.padding() * currentYScale.bandwidth();
+                const newIndex = Math.round(deltaY / taskHeight);
+                
+                // Find current index
+                const currentIndex = currentTasks.findIndex(t => t.id === draggedBar.id);
+                const targetIndex = currentIndex + newIndex;
+                
+                // Reorder tasks array if within bounds
+                if (targetIndex >= 0 && targetIndex < currentTasks.length && newIndex !== 0) {
+                    const [movedTask] = currentTasks.splice(currentIndex, 1);
+                    currentTasks.splice(targetIndex, 0, movedTask);
+                    
+                    // Update project tasks
+                    const project = projects.find(p => p.id === currentProjectId);
+                    if (project) {
+                        project.tasks = currentTasks;
+                    }
+                    
+                    // Re-render with new order
+                    renderGantt();
+                    dragStartY = event.clientY;
+                }
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (draggedBar) {
+                const svgs = document.querySelectorAll('.gantt-bar-group');
+                svgs.forEach(el => {
+                    el.classList.remove('dragging');
+                    el.setAttribute('cursor', 'grab');
+                });
+            }
+            draggedBar = null;
+            dragStartX = null;
+            dragStartY = null;
+            dragMode = null;
+        });
 
         // Check if already logged in
         window.addEventListener('load', async () => {
@@ -1163,12 +1248,21 @@
             const minDate = new Date(Math.min(...dates));
             const maxDate = new Date(Math.max(...dates));
 
+            // Store current scales/dimensions for drag event handlers
+            currentTasks = tasks;
+            currentMinDate = minDate;
+            currentMaxDate = maxDate;
+
             // Count total weekdays (excluding weekends)
             const totalWeekdays = countWeekdays(minDate, maxDate);
 
             const margin = { top: 20, right: 20, bottom: 30, left: 150 };
             const width = container.clientWidth - margin.left - margin.right;
             const height = Math.max(400, tasks.length * 50 + 100);
+            
+            // Store dimensions for drag handlers
+            currentWidth = width;
+            currentHeight = height;
 
             const svg = d3.select(container)
                 .append('svg')
@@ -1193,11 +1287,17 @@
             const xScale = d3.scaleTime()
                 .domain([minDate, maxDate])
                 .range([0, width]);
+            
+            // Store scales globally for drag handlers
+            currentXScale = xScale;
 
             const yScale = d3.scaleBand()
                 .domain(tasks.map(t => t.id))
                 .range([0, height - margin.bottom])
                 .padding(0.3);
+            
+            // Store scale globally for drag handlers
+            currentYScale = yScale;
 
             // Generate weekday ticks (Mon-Fri only) and weekend blocks
             const weekdayTicks = [];
@@ -1366,78 +1466,12 @@
                 .attr('class', 'gantt-axis')
                 .call(xAxis);
 
-            // Handle dragging (horizontal and vertical)
-            let dragMode = null; // 'horizontal' for date drag, 'vertical' for swimlane drag
-            
-            document.addEventListener('mousemove', (event) => {
-                if (!draggedBar || !dragStartX) return;
-
-                const deltaX = event.clientX - dragStartX;
-                const deltaY = event.clientY - dragStartY;
-                
-                // Determine drag mode based on initial movement
-                if (!dragMode) {
-                    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 5) {
-                        dragMode = 'horizontal';
-                    } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
-                        dragMode = 'vertical';
-                    }
-                }
-                
-                if (dragMode === 'horizontal') {
-                    // Horizontal drag: shift task dates
-                    const dayWidth = width / (maxDate - minDate) * 1000 * 60 * 60 * 24;
-                    const daysShifted = Math.round(deltaX / dayWidth);
-
-                    if (daysShifted === 0) return;
-
-                    const startDate = new Date(draggedBar.startDate);
-                    const endDate = new Date(draggedBar.endDate);
-                    
-                    startDate.setDate(startDate.getDate() + daysShifted);
-                    endDate.setDate(endDate.getDate() + daysShifted);
-
-                    draggedBar.startDate = startDate.toISOString().split('T')[0];
-                    draggedBar.endDate = endDate.toISOString().split('T')[0];
-                    
-                    dragStartX = event.clientX;
-                    updateTask(draggedBar.id, draggedBar);
-                } else if (dragMode === 'vertical') {
-                    // Vertical drag: reorder tasks (swimlane drag)
-                    const taskHeight = yScale.bandwidth() + yScale.padding() * yScale.bandwidth();
-                    const newIndex = Math.round(deltaY / taskHeight);
-                    
-                    // Find current index
-                    const currentIndex = tasks.findIndex(t => t.id === draggedBar.id);
-                    const targetIndex = currentIndex + newIndex;
-                    
-                    // Reorder tasks array if within bounds
-                    if (targetIndex >= 0 && targetIndex < tasks.length && newIndex !== 0) {
-                        const [movedTask] = tasks.splice(currentIndex, 1);
-                        tasks.splice(targetIndex, 0, movedTask);
-                        
-                        // Re-render with new order
-                        renderGantt();
-                        dragStartY = event.clientY;
-                    }
-                }
-            });
-
-            document.addEventListener('mouseup', () => {
-                if (draggedBar) {
-                    svg.selectAll('.gantt-bar-group').classed('dragging', false);
-                    svg.selectAll('.gantt-bar-group').attr('cursor', 'grab');
-                }
-                draggedBar = null;
-                dragStartX = null;
-                dragStartY = null;
-                dragMode = null;
-            });
+            // Drag event listeners are now global (defined in main script scope)
         }
 
         async function updateTask(taskId, taskData) {
             try {
-                await fetch(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
+                const response = await fetch(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1450,8 +1484,15 @@
                         dependencies: taskData.dependencies
                     })
                 });
-                renderGantt();
-                renderTasks();
+                
+                if (response.ok) {
+                    // Reload projects to get latest data from server
+                    await loadProjects();
+                    // Re-select current project to re-render
+                    if (currentProjectId) {
+                        selectProject(currentProjectId);
+                    }
+                }
             } catch (error) {
                 console.error('Error updating task:', error);
             }
