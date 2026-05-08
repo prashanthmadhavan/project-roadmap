@@ -1166,9 +1166,10 @@
                 .range([0, height - margin.bottom])
                 .padding(0.3);
 
-            // Draw grid lines
+            // Draw grid lines (weekly)
+            const weeklyTicks = xScale.ticks(d3.timeWeek);
             svg.selectAll('.grid')
-                .data(xScale.ticks(d3.timeDay))
+                .data(weeklyTicks)
                 .enter()
                 .append('line')
                 .attr('class', 'gantt-grid-line')
@@ -1176,6 +1177,20 @@
                 .attr('x2', d => xScale(d))
                 .attr('y1', 0)
                 .attr('y2', height - margin.bottom);
+            
+            // Add light grid lines for days
+            const dayTicks = xScale.ticks(d3.timeDay);
+            svg.selectAll('.grid-day')
+                .data(dayTicks)
+                .enter()
+                .append('line')
+                .attr('class', 'gantt-grid-line-light')
+                .attr('x1', d => xScale(d))
+                .attr('x2', d => xScale(d))
+                .attr('y1', 0)
+                .attr('y2', height - margin.bottom)
+                .attr('stroke', '#f0f0f0')
+                .attr('stroke-width', 1);
 
             // Draw task bars with drag functionality
             const bars = svg.selectAll('.gantt-bar')
@@ -1250,8 +1265,10 @@
                 });
             });
 
-            // Draw axes
-            const xAxis = d3.axisBottom(xScale).ticks(d3.timeDay);
+            // Draw axes (weekly)
+            const xAxis = d3.axisBottom(xScale)
+                .ticks(d3.timeWeek)
+                .tickFormat(d3.timeFormat('%b %d'));
             svg.append('g')
                 .attr('transform', `translate(0,${height - margin.bottom})`)
                 .attr('class', 'gantt-axis')
