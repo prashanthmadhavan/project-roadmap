@@ -7,6 +7,11 @@ An interactive web-based task management application with Gantt chart visualizat
 
 ## Features
 
+- **🔐 User Authentication**: Secure login/registration with password requirements
+  - Password: minimum 8 characters, must include uppercase and lowercase letters
+  - Case-sensitive passwords
+  - No password recovery (as designed)
+- **👥 User-Scoped Projects**: Users only see their own projects and tasks
 - **Multi-Project Support**: Create and manage multiple projects independently
 - **Project-Scoped Tasks**: Each project has its own tasks and dependencies
 - **Task Management**: Create, read, update, and delete tasks with ease
@@ -14,7 +19,9 @@ An interactive web-based task management application with Gantt chart visualizat
 - **Dependency Tracking**: Define task dependencies and visualize them with arrows
 - **Real-time Updates**: All changes are immediately reflected in the chart
 - **Responsive Design**: Works on desktop and tablet devices
-- **Data Persistence**: Projects and tasks are saved to JSON file storage
+- **Data Persistence**: All user accounts, projects, and tasks are saved permanently
+  - Data survives application restarts and deployments
+  - Each user's data is completely isolated
 
 ## Technologies
 
@@ -58,6 +65,23 @@ http://127.0.0.1:5000
 See [HOSTING.md](HOSTING.md) for detailed deployment instructions for each platform.
 
 ## Usage
+
+### First-Time Setup: Create an Account
+
+1. **Create Account**:
+   - Click "Create one" on the login page
+   - Enter desired username (3+ characters)
+   - Enter password following the rules shown:
+     - ✅ Minimum 8 characters
+     - ✅ Contains uppercase letters (A-Z)
+     - ✅ Contains lowercase letters (a-z)
+     - ✅ Case sensitive
+   - Click "Create Account"
+
+2. **Login**:
+   - Enter username and password
+   - Click "Sign In"
+   - You're now logged in to your personal workspace
 
 ### Creating a Project
 
@@ -116,14 +140,13 @@ See [HOSTING.md](HOSTING.md) for detailed deployment instructions for each platf
 
 ```
 project-roadmap/
-├── server.py                    # Python HTTP server with API endpoints
-├── index.html                   # Main application UI (multi-project)
-├── projects.json                # Projects and tasks data storage
-├── roadmap_test_data.xlsx       # Legacy test data in Excel format
-├── generate_test_data.py        # Legacy test data generator
-├── generate_projects_data.py    # Multi-project test data generator
+├── server.py                    # Python HTTP server with auth & API endpoints
+├── index.html                   # Main application UI (multi-project + auth)
+├── projects.json                # User projects and tasks data storage
+├── users.json                   # User accounts and hashed passwords
 ├── README.md                    # This file
 ├── MULTI_PROJECT_GUIDE.md       # Multi-project feature documentation
+├── AUTHENTICATION.md            # Authentication feature guide
 ├── HOSTING.md                   # Deployment options guide
 └── .gitignore                   # Git ignore rules
 ```
@@ -132,14 +155,22 @@ project-roadmap/
 
 The application exposes the following REST API endpoints:
 
-### Projects API
+### Authentication API
 
-- `GET /api/projects` - Retrieve all projects with their tasks
+- `POST /api/auth/register` - Create new user account
+- `POST /api/auth/login` - Login with credentials (returns token)
+- `POST /api/auth/logout` - Logout (invalidate session)
+- `GET /api/auth/me` - Get current authenticated user
+- **All endpoints require**: `Authorization: Bearer <token>` header (except register/login)
+
+### Projects API (Authenticated)
+
+- `GET /api/projects` - Retrieve all user's projects with their tasks
 - `POST /api/projects` - Create a new project
 - `PUT /api/projects/<project_id>` - Update a project
 - `DELETE /api/projects/<project_id>` - Delete a project and all its tasks
 
-### Tasks API (Project-Scoped)
+### Tasks API (Project-Scoped, Authenticated)
 
 - `POST /api/projects/<project_id>/tasks` - Add task to a project
 - `PUT /api/projects/<project_id>/tasks/<task_id>` - Update a task
