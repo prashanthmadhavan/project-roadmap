@@ -1129,23 +1129,37 @@
         }
 
         async function addTask() {
-            if (!currentProjectId) {
-                alert('Please select a project first');
-                return;
-            }
+             if (!currentProjectId) {
+                 alert('Please select a project first');
+                 return;
+             }
 
-            const name = document.getElementById('taskName').value.trim();
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
-            const dependencyId = document.getElementById('dependencySelect').value;
+             const name = document.getElementById('taskName').value.trim();
+             const startDate = document.getElementById('startDate').value;
+             const endDate = document.getElementById('endDate').value;
+             const dependencyId = document.getElementById('dependencySelect').value;
 
-            if (!name || !startDate || !endDate) {
-                alert('Please fill in all fields');
-                return;
-            }
+             if (!name || !startDate || !endDate) {
+                 alert('Please fill in all fields');
+                 return;
+             }
 
-            // Auto-add dependency if one is selected
-            const dependencies = dependencyId ? [dependencyId] : [];
+             // Validate date range
+             const start = new Date(startDate);
+             const end = new Date(endDate);
+             
+             if (start > end) {
+                 alert('Start date must be before end date');
+                 return;
+             }
+
+             if (start.getTime() === end.getTime()) {
+                 alert('Task must span at least one day');
+                 return;
+             }
+
+             // Auto-add dependency if one is selected
+             const dependencies = dependencyId ? [dependencyId] : [];
 
             try {
                 const response = await fetch(`/api/projects/${currentProjectId}/tasks`, {
