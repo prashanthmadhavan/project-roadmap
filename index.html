@@ -1189,24 +1189,36 @@
                 .attr('points', '0 0, 10 3, 0 6')
                 .attr('fill', '#ff9800');
 
-            // Custom scale that shows only weekdays
-            const xScale = (date) => {
-                const weekdayPos = getWeekdayPosition(date, minDate, totalWeekdays);
-                return (weekdayPos / 100) * width;
-            };
+            // Use proper D3 time scale for drag calculations to work
+            const xScale = d3.scaleTime()
+                .domain([minDate, maxDate])
+                .range([0, width]);
 
             const yScale = d3.scaleBand()
                 .domain(tasks.map(t => t.id))
                 .range([0, height - margin.bottom])
                 .padding(0.3);
 
-            // Generate weekday ticks (Mon-Fri only)
+            // Generate weekday ticks (Mon-Fri only) and weekend blocks
             const weekdayTicks = [];
             const weeklyTicks = [];
+            const weekendBlocks = [];
             let current = new Date(minDate);
+            let inWeekend = false;
+            let weekendStart = null;
+            
             while (current <= maxDate) {
                 const dayOfWeek = current.getDay();
-                if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Weekday
+                if (dayOfWeek === 0 || dayOfWeek === 6) { // Weekend
+                    if (!inWeekend) {
+                        weekendStart = new Date(current);
+                        inWeekend = true;
+                    }
+                } else { // Weekday
+                    if (inWeekend) {
+                        weekendBlocks.push({ start: weekendStart, end: new Date(current) });
+                        inWeekend = false;
+                    }
                     weekdayTicks.push(new Date(current));
                     // Add weekly tick on Mondays
                     if (dayOfWeek === 1) {
@@ -1215,6 +1227,23 @@
                 }
                 current.setDate(current.getDate() + 1);
             }
+            // Close any remaining weekend block
+            if (inWeekend) {
+                weekendBlocks.push({ start: weekendStart, end: new Date(current) });
+            }
+            
+            // Draw weekend background blocks (visual representation of hidden weekends)
+            svg.selectAll('.weekend-block')
+                .data(weekendBlocks)
+                .enter()
+                .append('rect')
+                .attr('class', 'weekend-block')
+                .attr('x', d => xScale(d.start))
+                .attr('y', 0)
+                .attr('width', d => Math.max(0, xScale(d.end) - xScale(d.start)))
+                .attr('height', height - margin.bottom)
+                .attr('fill', '#f9f9f9')
+                .attr('opacity', 0.5);
             
             // Draw grid lines (weekly)
             svg.selectAll('.grid')
@@ -1264,23 +1293,33 @@
                 .attr('height', yScale.bandwidth())
                 .attr('pointer-events', 'none');
 
-            // Add task labels on bars
+            // Add task labels on bars (only truncate if necessary)
             bars.append('text')
                 .attr('class', 'gantt-bar-label')
                 .attr('x', d => xScale(new Date(d.startDate)) + 5)
                 .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
                 .attr('dominant-baseline', 'middle')
                 .text(d => {
-                    const width = xScale(new Date(d.endDate)) - xScale(new Date(d.startDate));
-                    if (width > 80) {
-                        return d.name.length > 15 ? d.name.substring(0, 12) + '...' : d.name;
-                    } else if (width > 40) {
+                    const barWidth = xScale(new Date(d.endDate)) - xScale(new Date(d.startDate));
+                    // Estimate: ~8-10 pixels per character at font-size 12px
+                    const estimatedCharWidth = 9;
+                    const availableWidth = barWidth - 10; // 5px padding on each side
+                    const maxChars = Math.floor(availableWidth / estimatedCharWidth);
+                    
+                    if (barWidth > 80) {
+                        // Full bar width - show full name or truncate only if too long
+                        if (d.name.length > maxChars) {
+                            return d.name.substring(0, Math.max(1, maxChars - 3)) + '...';
+                        }
+                        return d.name;
+                    } else if (barWidth > 40) {
+                        // Medium bar - show 3-letter abbreviation
                         return d.name.substring(0, 3).toUpperCase();
                     }
-                    return '';
+                    return ''; // Too small to show text
                 });
 
-            // Draw task names on left
+            // Draw task names on left (full names, only truncate if longer than ~18 chars)
             svg.selectAll('.gantt-text')
                 .data(tasks)
                 .enter()
@@ -1290,7 +1329,14 @@
                 .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
                 .attr('text-anchor', 'end')
                 .attr('dominant-baseline', 'middle')
-                .text(d => d.name.length > 18 ? d.name.substring(0, 15) + '...' : d.name);
+                .attr('title', d => d.name) // Show full name on hover
+                .text(d => {
+                    // Only truncate if name is genuinely too long for the sidebar (>25 chars is safe)
+                    if (d.name.length > 25) {
+                        return d.name.substring(0, 22) + '...';
+                    }
+                    return d.name;
+                });
 
             // Draw dependency arrows
             tasks.forEach(task => {
@@ -1311,30 +1357,14 @@
             });
 
             // Draw axes (weekly)
-            // Draw custom x-axis with weekday labels
-            const axisG = svg.append('g')
+            // Draw x-axis with weekly labels
+            const xAxis = d3.axisBottom(xScale)
+                .ticks(d3.timeWeek)
+                .tickFormat(d3.timeFormat('%b %d'));
+            svg.append('g')
                 .attr('transform', `translate(0,${height - margin.bottom})`)
-                .attr('class', 'gantt-axis');
-            
-            // Add tick marks and labels for weekly ticks
-            weeklyTicks.forEach(d => {
-                const x = xScale(d);
-                const label = d3.timeFormat('%b %d')(d);
-                
-                axisG.append('line')
-                    .attr('x1', x)
-                    .attr('x2', x)
-                    .attr('y1', 0)
-                    .attr('y2', 5)
-                    .attr('stroke', 'black');
-                
-                axisG.append('text')
-                    .attr('x', x)
-                    .attr('y', 15)
-                    .attr('text-anchor', 'middle')
-                    .attr('font-size', '12px')
-                    .text(label);
-            });
+                .attr('class', 'gantt-axis')
+                .call(xAxis);
 
             // Handle dragging (horizontal and vertical)
             let dragMode = null; // 'horizontal' for date drag, 'vertical' for swimlane drag
