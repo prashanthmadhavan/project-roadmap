@@ -919,10 +919,64 @@
         document.addEventListener('scroll', resetSessionTimer);
         document.addEventListener('touchstart', resetSessionTimer);
 
-        // Global drag event listeners (used by renderGantt)
+         // Global drag event listeners (used by renderGantt)
+         let draggedTask = null;
+         let dragStartX = 0;
+         
+         document.addEventListener('dragstart', function(e) {
+             const element = e.target.closest('.gantt-bar-group');
+             if (element) {
+                 const taskId = element.getAttribute('data-task-id');
+                 draggedTask = currentTasks.find(t => t.id === taskId);
+                 dragStartX = e.clientX;
+                 element.classList.add('dragging');
+                 e.dataTransfer.effectAllowed = 'move';
+             }
+         });
+         
+         document.addEventListener('dragover', function(e) {
+             if (draggedTask) {
+                 e.preventDefault();
+                 e.dataTransfer.dropEffect = 'move';
+             }
+         });
+         
+         document.addEventListener('drop', function(e) {
+             if (!draggedTask || !currentXScale) return;
+             e.preventDefault();
+             
+             const dragDelta = e.clientX - dragStartX;
+             const pixelsPerDay = currentXScale(new Date(currentMinDate.getTime() + 86400000)) - currentXScale(currentMinDate);
+             const daysShifted = Math.round(dragDelta / pixelsPerDay);
+             
+             if (daysShifted !== 0) {
+                 // Update task dates
+                 const startDate = new Date(draggedTask.startDate);
+                 const endDate = new Date(draggedTask.endDate);
+                 startDate.setDate(startDate.getDate() + daysShifted);
+                 endDate.setDate(endDate.getDate() + daysShifted);
+                 
+                 draggedTask.startDate = formatDateForAPI(startDate);
+                 draggedTask.endDate = formatDateForAPI(endDate);
+                 
+                 // Update on server
+                 updateTask(draggedTask.id, draggedTask);
+             }
+             
+             draggedTask = null;
+             document.querySelectorAll('.gantt-bar-group').forEach(el => el.classList.remove('dragging'));
+         });
+         
+         document.addEventListener('dragend', function(e) {
+             draggedTask = null;
+             document.querySelectorAll('.gantt-bar-group').forEach(el => el.classList.remove('dragging'));
+         });
+         
+         function formatDateForAPI(date) {
+             return date.toISOString().split('T')[0];
+         }
 
-
-        // Check if already logged in
+         // Check if already logged in
         window.addEventListener('load', async () => {
             if (authToken) {
                 await checkAuth();
@@ -1683,12 +1737,14 @@
                 .attr('stroke-width', 1);
 
              // Draw task bars (static, read-only mode)
-              const bars = svg.selectAll('.gantt-bar')
-                  .data(tasks)
-                  .enter()
-                  .append('g')
-                  .attr('class', 'gantt-bar-group')
-                  .attr('cursor', 'default');
+             const bars = svg.selectAll('.gantt-bar')
+                   .data(tasks)
+                   .enter()
+                   .append('g')
+                   .attr('class', 'gantt-bar-group')
+                   .attr('data-task-id', d => d.id)
+                   .attr('cursor', 'move')
+                   .attr('draggable', 'true');
 
             bars.append('rect')
                 .attr('class', 'gantt-bar')
@@ -1696,7 +1752,7 @@
                 .attr('y', d => yScale(d.id))
                 .attr('width', d => Math.max(100, xScale(new Date(d.endDate)) - xScale(new Date(d.startDate))))
                 .attr('height', yScale.bandwidth())
-                .attr('pointer-events', 'none');
+                .attr('pointer-events', 'auto');
 
             // Add task labels on bars (only truncate if necessary)
             bars.append('text')
