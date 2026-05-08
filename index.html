@@ -698,6 +698,13 @@
             sessionWarningShown = false;
         }
 
+        // Helper function to safely escape HTML and prevent XSS attacks
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
         function startSessionMonitor() {
             // Clear any existing interval
             if (sessionCheckInterval) clearInterval(sessionCheckInterval);
@@ -1165,40 +1172,60 @@
         }
 
         function renderProjectsList() {
-            const container = document.getElementById('projectsList');
-            container.innerHTML = projects.map(project => `
-                <div class="project-item ${project.id === currentProjectId ? 'active' : ''}" 
-                     onclick="selectProject('${project.id}')">
-                    <div class="project-item-name">${project.name}</div>
-                    <div class="project-item-count">${project.tasks.length} tasks</div>
-                </div>
-            `).join('');
-        }
+             const container = document.getElementById('projectsList');
+             container.innerHTML = projects.map(project => `
+                 <div class="project-item ${project.id === currentProjectId ? 'active' : ''}" 
+                      data-project-id="${escapeHtml(project.id)}">
+                     <div class="project-item-name">${escapeHtml(project.name)}</div>
+                     <div class="project-item-count">${project.tasks.length} tasks</div>
+                 </div>
+             `).join('');
+             
+             // Add event delegation listener for project selection
+             container.addEventListener('click', (e) => {
+                 const projectItem = e.target.closest('[data-project-id]');
+                 if (projectItem) {
+                     const projectId = projectItem.dataset.projectId;
+                     selectProject(projectId);
+                 }
+             });
+         }
 
         function renderTasks() {
-            if (!currentProjectId) {
-                document.getElementById('tasksList').innerHTML = '';
-                return;
-            }
+             if (!currentProjectId) {
+                 document.getElementById('tasksList').innerHTML = '';
+                 return;
+             }
 
-            const project = projects.find(p => p.id === currentProjectId);
-            if (!project) return;
+             const project = projects.find(p => p.id === currentProjectId);
+             if (!project) return;
 
-            const container = document.getElementById('tasksList');
-            container.innerHTML = project.tasks.map(task => {
-                const start = new Date(task.startDate).toLocaleDateString();
-                const end = new Date(task.endDate).toLocaleDateString();
-                return `
-                    <div class="task-item">
-                        <strong>${task.name}</strong><br>
-                        <small>${start} → ${end}</small>
-                        <div class="task-item-actions">
-                            <button class="delete-btn" onclick="deleteTask('${task.id}')">Delete</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
+             const container = document.getElementById('tasksList');
+             container.innerHTML = project.tasks.map(task => {
+                 const start = new Date(task.startDate).toLocaleDateString();
+                 const end = new Date(task.endDate).toLocaleDateString();
+                 return `
+                     <div class="task-item" data-task-id="${escapeHtml(task.id)}">
+                         <strong>${escapeHtml(task.name)}</strong><br>
+                         <small>${start} → ${end}</small>
+                         <div class="task-item-actions">
+                             <button class="delete-btn" data-action="delete-task">Delete</button>
+                         </div>
+                     </div>
+                 `;
+             }).join('');
+             
+             // Add event delegation listener for delete buttons
+             container.addEventListener('click', (e) => {
+                 if (e.target.getAttribute('data-action') === 'delete-task') {
+                     const taskItem = e.target.closest('[data-task-id]');
+                     if (taskItem) {
+                         const taskId = taskItem.dataset.taskId;
+                         deleteTask(taskId);
+                     }
+                 }
+             });
+         }
 
         // Helper function to count weekdays between two dates
         function countWeekdays(start, end) {
