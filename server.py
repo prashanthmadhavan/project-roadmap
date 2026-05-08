@@ -260,22 +260,26 @@ class AuthHandler(SimpleHTTPRequestHandler):
         return True
 
     def normalize_task(self, task):
-        """Convert snake_case database fields to camelCase for API response"""
-        normalized = {
-            'id': task.get('id'),
-            'projectId': task.get('project_id'),
-            'name': task.get('name'),
-            'startDate': task.get('start_date'),
-            'endDate': task.get('end_date'),
-            'dependencies': task.get('dependencies', [])
-        }
-        # Parse dependencies if it's a JSON string
-        if isinstance(normalized['dependencies'], str):
-            try:
-                normalized['dependencies'] = json.loads(normalized['dependencies'])
-            except:
-                normalized['dependencies'] = []
-        return normalized
+         """Convert snake_case database fields to camelCase for API response"""
+         normalized = {
+             'id': task.get('id'),
+             'projectId': task.get('project_id'),
+             'name': task.get('name'),
+             'startDate': task.get('start_date'),
+             'endDate': task.get('end_date'),
+             'dependencies': task.get('dependencies', [])
+         }
+         # Parse dependencies if it's a JSON string
+         if isinstance(normalized['dependencies'], str):
+             try:
+                 normalized['dependencies'] = json.loads(normalized['dependencies'])
+             except json.JSONDecodeError as e:
+                 print(f"Warning: Failed to parse dependencies for task {task.get('id')}: {e}")
+                 normalized['dependencies'] = []
+             except Exception as e:
+                 print(f"Unexpected error parsing dependencies: {e}")
+                 raise
+         return normalized
 
     def load_projects(self):
         """Load all projects from database"""
@@ -362,13 +366,22 @@ class AuthHandler(SimpleHTTPRequestHandler):
         return f"{salt}${hash_obj.hex()}"
 
     def verify_password(self, password, hashed):
-        """Verify password against hash"""
-        try:
-            salt, hash_hex = hashed.split('$')
-            hash_obj = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-            return hash_hex == hash_obj.hex()
-        except:
-            return False
+         """Verify password against hash"""
+         try:
+             parts = hashed.split('$')
+             if len(parts) != 2:
+                 print(f"Warning: Invalid password hash format (expected 2 parts, got {len(parts)})")
+                 return False
+             
+             salt, hash_hex = parts
+             hash_obj = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+             return hash_hex == hash_obj.hex()
+         except ValueError as e:
+             print(f"Error verifying password: Invalid hash format - {e}")
+             return False
+         except Exception as e:
+             print(f"Critical error during password verification: {e}")
+             raise
 
     def get_auth_token(self):
         """Extract auth token from headers"""
