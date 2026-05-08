@@ -1565,12 +1565,11 @@
                   
                   if (e.target.getAttribute('data-action') === 'edit-task') {
                       openEditTaskModal(taskId);
-                  } else if (e.target.getAttribute('data-action') === 'delete-task') {
-                      deleteTask(taskId);
-                     }
-                 }
-             });
-         }
+                   } else if (e.target.getAttribute('data-action') === 'delete-task') {
+                       deleteTask(taskId);
+                   }
+                 });
+          }
 
         // Helper function to count weekdays between two dates
          function countWeekdays(start, end) {
