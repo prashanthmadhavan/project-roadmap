@@ -1,0 +1,453 @@
+[
+  {
+    "id": "1",
+    "name": "Hotel Supply: Connectivity and Local Contracts",
+    "startDate": "2026-01-15",
+    "endDate": "2026-07-31",
+    "dependencies": []
+  },
+  {
+    "id": "2",
+    "name": "Pricing rules - BAU",
+    "startDate": "2026-01-01",
+    "endDate": "2026-08-31",
+    "dependencies": []
+  },
+  {
+    "id": "3",
+    "name": "Local Contracts Go Live (OJ + Darwin Flow)",
+    "startDate": "2026-05-01",
+    "endDate": "2026-05-31",
+    "dependencies": [
+      "1"
+    ]
+  },
+  {
+    "id": "4",
+    "name": "Phase 2 Destinations Enabling - Brussels, Copenhagen, Ibiza",
+    "startDate": "2026-02-01",
+    "endDate": "2026-03-15",
+    "dependencies": []
+  },
+  {
+    "id": "5",
+    "name": "Phase 3 Destinations Enabling - Amsterdam, Athens, Dublin, Glasgow, Manchester",
+    "startDate": "2026-03-01",
+    "endDate": "2026-03-23",
+    "dependencies": [
+      "4"
+    ]
+  },
+  {
+    "id": "6",
+    "name": "Phase 4 Destinations Enabling - Barcelona, Istanbul, Malta",
+    "startDate": "2026-04-01",
+    "endDate": "2026-04-23",
+    "dependencies": [
+      "5"
+    ]
+  },
+  {
+    "id": "7",
+    "name": "Phase 5 Destinations Enabling - Boston, Chicago, Jersey, Marrakech, Miami",
+    "startDate": "2026-05-01",
+    "endDate": "2026-05-26",
+    "dependencies": [
+      "6"
+    ]
+  },
+  {
+    "id": "8",
+    "name": "Tech / Platform work",
+    "startDate": "2026-03-15",
+    "endDate": "2026-08-15",
+    "dependencies": []
+  },
+  {
+    "id": "9",
+    "name": "Automate product setup",
+    "startDate": "2026-04-01",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "8"
+    ]
+  },
+  {
+    "id": "10",
+    "name": "PS: Codegen Gaps",
+    "startDate": "2026-05-01",
+    "endDate": "2026-08-31",
+    "dependencies": []
+  },
+  {
+    "id": "11",
+    "name": "Promotions calendar",
+    "startDate": "2026-04-15",
+    "endDate": "2026-06-30",
+    "dependencies": [
+      "8"
+    ]
+  },
+  {
+    "id": "12",
+    "name": "Remove Dynamic Profile Creation completely or remove from Mik's team",
+    "startDate": "2026-03-01",
+    "endDate": "2026-04-15",
+    "dependencies": []
+  },
+  {
+    "id": "13",
+    "name": "Automate Agresso set up for supplier info (to migrate work from Mik's team to WNS)",
+    "startDate": "2026-04-01",
+    "endDate": "2026-06-15",
+    "dependencies": [
+      "9"
+    ]
+  },
+  {
+    "id": "14",
+    "name": "Product Setup for Transfers",
+    "startDate": "2026-05-15",
+    "endDate": "2026-07-15",
+    "dependencies": [
+      "9"
+    ]
+  },
+  {
+    "id": "15",
+    "name": "Set up & content for Cars",
+    "startDate": "2026-05-01",
+    "endDate": "2026-06-30",
+    "dependencies": [
+      "9"
+    ]
+  },
+  {
+    "id": "16",
+    "name": "Detailed plan for locally held contract dual run go live (in OJ)",
+    "startDate": "2026-03-15",
+    "endDate": "2026-04-30",
+    "dependencies": [
+      "1"
+    ]
+  },
+  {
+    "id": "17",
+    "name": "Revise usefulness of Splunk dashboards",
+    "startDate": "2026-04-01",
+    "endDate": "2026-05-15",
+    "dependencies": [
+      "8"
+    ]
+  },
+  {
+    "id": "18",
+    "name": "Set up monitoring and alerting",
+    "startDate": "2026-05-01",
+    "endDate": "2026-06-30",
+    "dependencies": [
+      "17"
+    ]
+  },
+  {
+    "id": "19",
+    "name": "Ensure observability is sufficient to allow troubleshooting of alerts",
+    "startDate": "2026-06-01",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "18"
+    ]
+  },
+  {
+    "id": "20",
+    "name": "Set up and progressively extend automated regression testing in TBX",
+    "startDate": "2026-04-15",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "8"
+    ]
+  },
+  {
+    "id": "21",
+    "name": "Add Vegas as a Destination",
+    "startDate": "2026-06-15",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "7"
+    ]
+  },
+  {
+    "id": "22",
+    "name": "LC - TravelGate Integration (OJ/TBX)",
+    "startDate": "2026-05-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "8"
+    ]
+  },
+  {
+    "id": "23",
+    "name": "Training for Destinations team",
+    "startDate": "2026-07-01",
+    "endDate": "2026-08-15",
+    "dependencies": [
+      "7"
+    ]
+  },
+  {
+    "id": "24",
+    "name": "Training for WNS",
+    "startDate": "2026-07-15",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "13"
+    ]
+  },
+  {
+    "id": "25",
+    "name": "Training for Pricing",
+    "startDate": "2026-07-15",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "2"
+    ]
+  },
+  {
+    "id": "26",
+    "name": "Training for BAU testers",
+    "startDate": "2026-07-01",
+    "endDate": "2026-08-15",
+    "dependencies": [
+      "20"
+    ]
+  },
+  {
+    "id": "27",
+    "name": "Training for Operations (Local)",
+    "startDate": "2026-07-15",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "3"
+    ]
+  },
+  {
+    "id": "28",
+    "name": "Training for Contentful (Local/PS)",
+    "startDate": "2026-07-01",
+    "endDate": "2026-08-15",
+    "dependencies": [
+      "9"
+    ]
+  },
+  {
+    "id": "29",
+    "name": "Headline Price + Local Fees API feeds for Hotel Only and Packages (DP Flight + Hotel)",
+    "startDate": "2026-02-01",
+    "endDate": "2026-04-30",
+    "dependencies": [
+      "2"
+    ]
+  },
+  {
+    "id": "30",
+    "name": "Modular Price Comparison: Dilution Rules - Ability to flex package price",
+    "startDate": "2026-03-01",
+    "endDate": "2026-05-31",
+    "dependencies": [
+      "29"
+    ]
+  },
+  {
+    "id": "31",
+    "name": "Markup Scheme / Discount Scheme Adjustment based on bundled or individual component cost",
+    "startDate": "2026-04-01",
+    "endDate": "2026-06-30",
+    "dependencies": [
+      "30"
+    ]
+  },
+  {
+    "id": "32",
+    "name": "Modular Price Comparison: Close the Gap",
+    "startDate": "2026-03-15",
+    "endDate": "2026-05-15",
+    "dependencies": [
+      "29"
+    ]
+  },
+  {
+    "id": "33",
+    "name": "Hotel Content Model",
+    "startDate": "2026-04-01",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "9"
+    ]
+  },
+  {
+    "id": "34",
+    "name": "Product Setup process optimisation",
+    "startDate": "2026-05-01",
+    "endDate": "2026-07-15",
+    "dependencies": [
+      "9"
+    ]
+  },
+  {
+    "id": "35",
+    "name": "CMA Headline Price",
+    "startDate": "2026-05-15",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "29"
+    ]
+  },
+  {
+    "id": "36",
+    "name": "Flight Dilution rules",
+    "startDate": "2026-04-15",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "30"
+    ]
+  },
+  {
+    "id": "37",
+    "name": "Bundles core pricing rules + pricing and markup enhancements (integration of private fares)",
+    "startDate": "2026-04-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "31"
+    ]
+  },
+  {
+    "id": "38",
+    "name": "Minimum Margin Protection",
+    "startDate": "2026-05-15",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "37"
+    ]
+  },
+  {
+    "id": "39",
+    "name": "Automated content loading solution - Automation of Product Loading using CodeGen AI",
+    "startDate": "2026-05-01",
+    "endDate": "2026-08-15",
+    "dependencies": [
+      "10"
+    ]
+  },
+  {
+    "id": "40",
+    "name": "IBS Connectivity & Add Vegas as a destination",
+    "startDate": "2026-06-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "21"
+    ]
+  },
+  {
+    "id": "41",
+    "name": "LC - Smart Contract Loading",
+    "startDate": "2026-06-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "33"
+    ]
+  },
+  {
+    "id": "42",
+    "name": "Get relevant hotel recommendations - Discovery Phase",
+    "startDate": "2026-04-01",
+    "endDate": "2026-05-31",
+    "dependencies": []
+  },
+  {
+    "id": "43",
+    "name": "Get relevant hotel recommendations - Implementation",
+    "startDate": "2026-06-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "42"
+    ]
+  },
+  {
+    "id": "44",
+    "name": "Surface Best Room Offer - Prepare Discovery",
+    "startDate": "2026-04-15",
+    "endDate": "2026-06-15",
+    "dependencies": []
+  },
+  {
+    "id": "45",
+    "name": "LC - Supplier Contracts & Communication (PDF)",
+    "startDate": "2026-03-01",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "1"
+    ]
+  },
+  {
+    "id": "46",
+    "name": "LC - Supplier Contracts & Communication (Template - Blocker)",
+    "startDate": "2026-04-01",
+    "endDate": "2026-06-30",
+    "dependencies": [
+      "45"
+    ]
+  },
+  {
+    "id": "47",
+    "name": "Data Migration & Inventory",
+    "startDate": "2026-05-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "46"
+    ]
+  },
+  {
+    "id": "48",
+    "name": "Create Tritium IDs in Travelbox and Hotel loading (10,500 hotels live by end July)",
+    "startDate": "2026-05-15",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "47"
+    ]
+  },
+  {
+    "id": "49",
+    "name": "LC - Finance & Agresso",
+    "startDate": "2026-05-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "13"
+    ]
+  },
+  {
+    "id": "50",
+    "name": "IBS Connectivity - Setup",
+    "startDate": "2026-04-01",
+    "endDate": "2026-07-31",
+    "dependencies": [
+      "8"
+    ]
+  },
+  {
+    "id": "51",
+    "name": "Manual Hotel Scaling",
+    "startDate": "2026-02-01",
+    "endDate": "2026-04-30",
+    "dependencies": []
+  },
+  {
+    "id": "52",
+    "name": "Automated Hotel Scaling",
+    "startDate": "2026-05-01",
+    "endDate": "2026-08-31",
+    "dependencies": [
+      "51",
+      "39"
+    ]
+  }
+]

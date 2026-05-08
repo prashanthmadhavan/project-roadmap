@@ -1,0 +1,11 @@
+node_modules/
+__pycache__/
+*.pyc
+.DS_Store
+*.log
+nohup.out
+.venv
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage

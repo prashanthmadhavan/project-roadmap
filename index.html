@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Gantt Chart</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+            height: calc(100vh - 40px);
+        }
+
+        .sidebar {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            overflow-y: auto;
+        }
+
+        .main {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        h2 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #555;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        input[type="text"],
+        input[type="date"],
+        select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 13px;
+            font-family: inherit;
+        }
+
+        input[type="text"]:focus,
+        input[type="date"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #4CAF50;
+            box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+        }
+
+        .dependencies-list {
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+
+        .dependency-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            background: white;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+
+        .dependency-item button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .dependency-item button:hover {
+            background: #ff5252;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            width: 100%;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        .tasks-list {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        .task-item {
+            background: #f9f9f9;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .task-item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .task-item-name {
+            font-weight: 500;
+            color: #333;
+            font-size: 13px;
+        }
+
+        .task-item-dates {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .task-item-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .task-item-actions button {
+            padding: 4px 8px;
+            font-size: 11px;
+            width: auto;
+            margin: 0;
+        }
+
+        .delete-btn {
+            background: #ff6b6b;
+        }
+
+        .delete-btn:hover {
+            background: #ff5252;
+        }
+
+        .edit-btn {
+            background: #2196F3;
+        }
+
+        .edit-btn:hover {
+            background: #0b7dda;
+        }
+
+        #gantt-container {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+
+        svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .gantt-bar {
+            fill: #4CAF50;
+            stroke: #2e7d32;
+            stroke-width: 1;
+        }
+
+        .gantt-bar:hover {
+            fill: #45a049;
+        }
+
+        .gantt-text {
+            font-size: 12px;
+            fill: #333;
+            pointer-events: none;
+        }
+
+        .gantt-grid-line {
+            stroke: #eee;
+            stroke-width: 1;
+        }
+
+        .gantt-axis {
+            font-size: 12px;
+        }
+
+        .dependency-line {
+            stroke: #ff9800;
+            stroke-width: 2;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.4);
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+        }
+
+        .modal-header {
+            font-size: 20px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .modal-buttons button {
+            flex: 1;
+        }
+
+        .cancel-btn {
+            background: #999;
+        }
+
+        .cancel-btn:hover {
+            background: #777;
+        }
+
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 12px;
+            margin-bottom: 15px;
+            border-radius: 4px;
+            font-size: 13px;
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h1>Tasks</h1>
+            
+            <div class="info-box">
+                Add tasks with start/end dates and dependencies to see them on the Gantt chart
+            </div>
+
+            <div class="form-group">
+                <label>Task Name</label>
+                <input type="text" id="taskName" placeholder="Enter task name">
+            </div>
+
+            <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" id="startDate">
+            </div>
+
+            <div class="form-group">
+                <label>End Date</label>
+                <input type="date" id="endDate">
+            </div>
+
+            <div class="form-group">
+                <label>Dependencies</label>
+                <select id="dependencySelect">
+                    <option value="">Select a task (optional)</option>
+                </select>
+                <button onclick="addDependency()" style="margin-top: 8px;">Add Dependency</button>
+                <div id="dependenciesList" class="dependencies-list"></div>
+            </div>
+
+            <button onclick="addTask()" style="margin-top: 20px;">Add Task</button>
+
+            <div class="tasks-list">
+                <h2>All Tasks</h2>
+                <div id="tasksList"></div>
+            </div>
+        </div>
+
+        <div class="main">
+            <h2 style="margin-bottom: 15px;">Gantt Chart with Dependencies</h2>
+            <div id="gantt-container"></div>
+        </div>
+    </div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Edit Task</div>
+            <div class="form-group">
+                <label>Task Name</label>
+                <input type="text" id="editTaskName">
+            </div>
+            <div class="form-group">
+                <label>Start Date</label>
+                <input type="date" id="editStartDate">
+            </div>
+            <div class="form-group">
+                <label>End Date</label>
+                <input type="date" id="editEndDate">
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-btn" onclick="closeEditModal()">Cancel</button>
+                <button onclick="saveEdit()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tasks = [];
+        let currentDependencies = [];
+        let editingTaskId = null;
+
+        // Load tasks on page load
+        async function loadTasks() {
+            try {
+                const response = await fetch('/api/tasks');
+                tasks = await response.json();
+                renderTasks();
+                renderGantt();
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+            }
+        }
+
+        async function addTask() {
+            const name = document.getElementById('taskName').value.trim();
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            if (!name || !startDate || !endDate) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        startDate,
+                        endDate,
+                        dependencies: currentDependencies
+                    })
+                });
+
+                if (response.ok) {
+                    document.getElementById('taskName').value = '';
+                    document.getElementById('startDate').value = '';
+                    document.getElementById('endDate').value = '';
+                    currentDependencies = [];
+                    document.getElementById('dependenciesList').innerHTML = '';
+                    loadTasks();
+                }
+            } catch (error) {
+                console.error('Error adding task:', error);
+            }
+        }
+
+        function addDependency() {
+            const select = document.getElementById('dependencySelect');
+            const taskId = select.value;
+            
+            if (!taskId) {
+                alert('Please select a task');
+                return;
+            }
+
+            if (currentDependencies.includes(taskId)) {
+                alert('This dependency is already added');
+                return;
+            }
+
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                currentDependencies.push(taskId);
+                updateDependenciesDisplay();
+            }
+        }
+
+        function removeDependency(taskId) {
+            currentDependencies = currentDependencies.filter(id => id !== taskId);
+            updateDependenciesDisplay();
+        }
+
+        function updateDependenciesDisplay() {
+            const container = document.getElementById('dependenciesList');
+            container.innerHTML = currentDependencies.map(depId => {
+                const depTask = tasks.find(t => t.id === depId);
+                return `
+                    <div class="dependency-item">
+                        <span>${depTask ? depTask.name : 'Unknown'}</span>
+                        <button onclick="removeDependency('${depId}')">Remove</button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        async function deleteTask(taskId) {
+            if (!confirm('Delete this task?')) return;
+
+            try {
+                await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+                loadTasks();
+            } catch (error) {
+                console.error('Error deleting task:', error);
+            }
+        }
+
+        function openEditModal(taskId) {
+            editingTaskId = taskId;
+            const task = tasks.find(t => t.id === taskId);
+            if (task) {
+                document.getElementById('editTaskName').value = task.name;
+                document.getElementById('editStartDate').value = task.startDate;
+                document.getElementById('editEndDate').value = task.endDate;
+                document.getElementById('editModal').classList.add('show');
+            }
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').classList.remove('show');
+            editingTaskId = null;
+        }
+
+        async function saveEdit() {
+            const name = document.getElementById('editTaskName').value.trim();
+            const startDate = document.getElementById('editStartDate').value;
+            const endDate = document.getElementById('editEndDate').value;
+
+            if (!name || !startDate || !endDate) {
+                alert('Please fill in all fields');
+                return;
+            }
+
+            try {
+                const task = tasks.find(t => t.id === editingTaskId);
+                const response = await fetch(`/api/tasks/${editingTaskId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        startDate,
+                        endDate,
+                        dependencies: task.dependencies
+                    })
+                });
+
+                if (response.ok) {
+                    closeEditModal();
+                    loadTasks();
+                }
+            } catch (error) {
+                console.error('Error saving task:', error);
+            }
+        }
+
+        function renderTasks() {
+            const container = document.getElementById('tasksList');
+            const select = document.getElementById('dependencySelect');
+
+            // Update select options
+            select.innerHTML = '<option value="">Select a task (optional)</option>';
+            tasks.forEach(task => {
+                const option = document.createElement('option');
+                option.value = task.id;
+                option.textContent = task.name;
+                select.appendChild(option);
+            });
+
+            // Render task items
+            container.innerHTML = tasks.map(task => {
+                const start = new Date(task.startDate).toLocaleDateString();
+                const end = new Date(task.endDate).toLocaleDateString();
+                return `
+                    <div class="task-item">
+                        <div class="task-item-header">
+                            <div class="task-item-name">${task.name}</div>
+                        </div>
+                        <div class="task-item-dates">${start} → ${end}</div>
+                        <div class="task-item-actions">
+                            <button class="edit-btn" onclick="openEditModal('${task.id}')">Edit</button>
+                            <button class="delete-btn" onclick="deleteTask('${task.id}')">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderGantt() {
+            const container = document.getElementById('gantt-container');
+            container.innerHTML = '';
+
+            if (tasks.length === 0) {
+                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">Add tasks to see the Gantt chart</div>';
+                return;
+            }
+
+            // Calculate date range
+            const dates = tasks.flatMap(t => [new Date(t.startDate), new Date(t.endDate)]);
+            const minDate = new Date(Math.min(...dates));
+            const maxDate = new Date(Math.max(...dates));
+
+            const margin = { top: 20, right: 20, bottom: 30, left: 150 };
+            const width = container.clientWidth - margin.left - margin.right;
+            const height = Math.max(400, tasks.length * 50 + 100);
+
+            const svg = d3.select(container)
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            // Add marker for dependency arrows
+            svg.append('defs').append('marker')
+                .attr('id', 'arrowhead')
+                .attr('markerWidth', 10)
+                .attr('markerHeight', 10)
+                .attr('refX', 9)
+                .attr('refY', 3)
+                .attr('orient', 'auto')
+                .append('polygon')
+                .attr('points', '0 0, 10 3, 0 6')
+                .attr('fill', '#ff9800');
+
+            const xScale = d3.scaleTime()
+                .domain([minDate, maxDate])
+                .range([0, width]);
+
+            const yScale = d3.scaleBand()
+                .domain(tasks.map(t => t.id))
+                .range([0, height - margin.bottom])
+                .padding(0.3);
+
+            // Draw grid lines
+            svg.selectAll('.grid')
+                .data(xScale.ticks(d3.timeDay))
+                .enter()
+                .append('line')
+                .attr('class', 'gantt-grid-line')
+                .attr('x1', d => xScale(d))
+                .attr('x2', d => xScale(d))
+                .attr('y1', 0)
+                .attr('y2', height - margin.bottom);
+
+            // Draw task bars
+            svg.selectAll('.gantt-bar')
+                .data(tasks)
+                .enter()
+                .append('rect')
+                .attr('class', 'gantt-bar')
+                .attr('x', d => xScale(new Date(d.startDate)))
+                .attr('y', d => yScale(d.id))
+                .attr('width', d => xScale(new Date(d.endDate)) - xScale(new Date(d.startDate)))
+                .attr('height', yScale.bandwidth());
+
+            // Draw task labels
+            svg.selectAll('.gantt-text')
+                .data(tasks)
+                .enter()
+                .append('text')
+                .attr('class', 'gantt-text')
+                .attr('x', -10)
+                .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
+                .attr('text-anchor', 'end')
+                .attr('dominant-baseline', 'middle')
+                .text(d => d.name);
+
+            // Draw dependency arrows
+            tasks.forEach(task => {
+                task.dependencies.forEach(depId => {
+                    const depTask = tasks.find(t => t.id === depId);
+                    if (depTask) {
+                        const x1 = xScale(new Date(depTask.endDate));
+                        const y1 = yScale(depId) + yScale.bandwidth() / 2;
+                        const x2 = xScale(new Date(task.startDate));
+                        const y2 = yScale(task.id) + yScale.bandwidth() / 2;
+
+                        // Draw a curved line with arrow
+                        const midX = (x1 + x2) / 2;
+                        svg.append('path')
+                            .attr('class', 'dependency-line')
+                            .attr('d', `M ${x1} ${y1} C ${midX} ${y1} ${midX} ${y2} ${x2} ${y2}`);
+                    }
+                });
+            });
+
+            // Draw axes
+            const xAxis = d3.axisBottom(xScale).ticks(d3.timeDay);
+            svg.append('g')
+                .attr('transform', `translate(0,${height - margin.bottom})`)
+                .attr('class', 'gantt-axis')
+                .call(xAxis)
+                .append('text')
+                .attr('x', width / 2)
+                .attr('y', 30)
+                .attr('fill', '#333')
+                .style('text-anchor', 'middle')
+                .text('Timeline');
+        }
+
+        // Initial load
+        loadTasks();
+    </script>
+</body>
+</html>
