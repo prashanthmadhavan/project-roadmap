@@ -926,21 +926,15 @@
         let dragUpdateTimer = null; // Timer for debouncing drag updates
         
          // Gantt chart scales (updated during renderGantt)
-         let currentXScale = null;
-         let currentYScale = null;
-         let currentWidth = null;
-         let currentHeight = null;
-         let currentMinDate = null;
-         let currentMaxDate = null;
-         let currentTasks = null;
-         
-         // Slider variables for 3-week window
-         const WINDOW_DAYS = 21; // 3 weeks
-         let sliderMinDate = null;
-         let sliderMaxDate = null;
-         let windowStartDate = null;
-         
-         // Session management (15 minutes = 900 seconds)
+          let currentXScale = null;
+          let currentYScale = null;
+          let currentWidth = null;
+          let currentHeight = null;
+          let currentMinDate = null;
+          let currentMaxDate = null;
+          let currentTasks = null;
+          
+          // Session management (15 minutes = 900 seconds)
         const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
         let sessionWarningShown = false;
         let sessionCheckInterval = null;
@@ -2021,211 +2015,14 @@
                  .ticks(d3.timeWeek)
                  .tickFormat(d3.timeFormat('%b %d'));
              svg.append('g')
-                 .attr('transform', `translate(0,${height - margin.bottom})`)
-                 .attr('class', 'gantt-axis')
-                 .call(xAxis);
-
-             // Initialize timeline slider for 3-week window navigation
-             initializeTimelineSlider(minDate, maxDate);
-
-             // Drag event listeners are now global (defined in main script scope)
-         }
-
-         function initializeTimelineSlider(minDate, maxDate) {
-             const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
-             
-             // Only show slider if project spans more than 3 weeks
-             if (totalDays > WINDOW_DAYS) {
-                 sliderMinDate = new Date(minDate);
-                 sliderMaxDate = new Date(maxDate);
-                 windowStartDate = new Date(minDate);
-                 
-                 const slider = document.getElementById('timelineSlider');
-                 const sliderContainer = document.getElementById('timelineSliderContainer');
-                 
-                 // Set slider max value (number of possible 3-week windows)
-                 const maxSliderValue = totalDays - WINDOW_DAYS;
-                 slider.max = Math.ceil(maxSliderValue);
-                 slider.value = 0;
-                 
-                 // Update date display
-                 updateTimelineSliderDisplay();
-                 
-                 // Show slider container
-                 sliderContainer.style.display = 'block';
-                 
-                 // Add change listener
-                 slider.addEventListener('change', updateTimelineWindow);
-                 slider.addEventListener('input', updateTimelineWindow);
-             } else {
-                 // Hide slider if project is short
-                 document.getElementById('timelineSliderContainer').style.display = 'none';
-             }
-         }
-
-         function updateTimelineWindow() {
-             const slider = document.getElementById('timelineSlider');
-             const daysOffset = parseInt(slider.value);
-             
-             if (!sliderMinDate) return;
-             
-             // Calculate new window start date
-             windowStartDate = new Date(sliderMinDate);
-             windowStartDate.setDate(windowStartDate.getDate() + daysOffset);
-             
-             // Calculate new window end date (3 weeks from start)
-             const windowEndDate = new Date(windowStartDate);
-             windowEndDate.setDate(windowEndDate.getDate() + WINDOW_DAYS);
-             
-             // Update display
-             updateTimelineSliderDisplay();
-             
-             // Re-render Gantt chart with new window
-             renderGanttWithWindow(windowStartDate, windowEndDate);
-         }
-
-         function updateTimelineSliderDisplay() {
-             if (!windowStartDate) return;
-             
-             const windowEndDate = new Date(windowStartDate);
-             windowEndDate.setDate(windowEndDate.getDate() + WINDOW_DAYS);
-             
-             const startStr = windowStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-             const endStr = windowEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-             
-             document.getElementById('timelineDates').textContent = `${startStr} → ${endStr}`;
-         }
-
-          function renderGanttWithWindow(windowStart, windowEnd) {
-              // Re-render the Gantt chart with xScale domain set to the window range
-              // This provides a zoomed view of just the 3-week window
-              
-              const container = document.getElementById('gantt-container');
-              container.innerHTML = '';
-
-              if (!currentProjectId) {
-                  container.innerHTML = '<div class="empty-state"><p>👈 Select a project to view Gantt chart</p></div>';
-                  return;
-              }
-
-              const project = projects.find(p => p.id === currentProjectId);
-              if (!project || project.tasks.length === 0) {
-                  container.innerHTML = '<div class="empty-state"><p>📋 No tasks. Add a task to see the Gantt chart.</p></div>';
-                  return;
-              }
-
-              const tasks = project.tasks;
-              const margin = { top: 20, right: 20, bottom: 30, left: 150 };
-              const width = container.clientWidth - margin.left - margin.right;
-              const height = Math.max(300, tasks.length * 40 + 50);
-
-              // Create SVG with zoomed view for the window range
-              const svg = d3.select(container)
-                  .append('svg')
-                  .attr('width', width + margin.left + margin.right)
-                  .attr('height', height + margin.top + margin.bottom)
-                  .append('g')
-                  .attr('transform', `translate(${margin.left},${margin.top})`);
-
-              // X-scale: zoomed to show only the window date range
-              const xScale = d3.scaleTime()
-                  .domain([windowStart, windowEnd])
-                  .range([0, width]);
-
-              // Y-scale: swimlane for each task
-              const yScale = d3.scaleBand()
-                  .domain(tasks.map(t => t.id))
-                  .range([0, height - margin.bottom])
-                  .paddingInner(0.2)
-                  .paddingOuter(0.1);
-
-              // Draw weekend background blocks
-              const currentDate = new Date(windowStart);
-              while (currentDate < windowEnd) {
-                  if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
-                      const dayStart = xScale(currentDate);
-                      const nextDay = new Date(currentDate);
-                      nextDay.setDate(nextDay.getDate() + 1);
-                      const dayEnd = xScale(nextDay);
-                      
-                      svg.append('rect')
-                          .attr('x', dayStart)
-                          .attr('y', 0)
-                          .attr('width', dayEnd - dayStart)
-                          .attr('height', height - margin.bottom)
-                          .attr('fill', '#f0f0f0')
-                          .attr('pointer-events', 'none');
-                  }
-                  currentDate.setDate(currentDate.getDate() + 1);
-              }
-
-              // Draw grid lines for each day
-              currentDate = new Date(windowStart);
-              while (currentDate < windowEnd) {
-                  const x = xScale(currentDate);
-                  svg.append('line')
-                      .attr('x1', x)
-                      .attr('y1', 0)
-                      .attr('x2', x)
-                      .attr('y2', height - margin.bottom)
-                      .attr('stroke', '#ddd')
-                      .attr('stroke-width', 1)
-                      .attr('pointer-events', 'none');
-                  currentDate.setDate(currentDate.getDate() + 1);
-              }
-
-              // Draw task bars (only those visible in window)
-              const bars = svg.selectAll('.gantt-bar-group')
-                  .data(tasks)
-                  .enter()
-                  .append('g')
-                  .attr('class', 'gantt-bar-group')
-                  .attr('cursor', 'grab');
-
-              bars.append('rect')
-                  .attr('class', 'gantt-bar')
-                  .attr('x', d => {
-                      const startDate = new Date(d.startDate);
-                      return Math.max(0, xScale(startDate));
-                  })
-                  .attr('y', d => yScale(d.id))
-                  .attr('width', d => {
-                      const startDate = new Date(d.startDate);
-                      const endDate = new Date(d.endDate);
-                      const start = Math.max(windowStart, startDate);
-                      const end = Math.min(windowEnd, endDate);
-                      return Math.max(50, xScale(end) - xScale(start));
-                  })
-                  .attr('height', yScale.bandwidth())
-                  .attr('fill', '#4CAF50')
-                  .attr('pointer-events', 'none');
-
-              // Add task labels
-              bars.append('text')
-                  .attr('class', 'gantt-bar-label')
-                  .attr('x', d => {
-                      const startDate = new Date(d.startDate);
-                      return Math.max(5, xScale(startDate) + 5);
-                  })
-                  .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
-                  .attr('dominant-baseline', 'middle')
-                  .attr('fill', 'white')
-                  .attr('font-size', '12px')
-                  .attr('pointer-events', 'none')
-                  .text(d => d.name);
-
-              // X-axis with dates
-              const xAxis = d3.axisBottom(xScale)
-                  .tickFormat(d3.timeFormat('%m/%d'));
-              svg.append('g')
                   .attr('transform', `translate(0,${height - margin.bottom})`)
+                  .attr('class', 'gantt-axis')
                   .call(xAxis);
 
-              // Y-axis with task names
-              const yAxis = d3.axisLeft(yScale);
-              svg.append('g')
-                  .call(yAxis);
+              // Drag event listeners are now global (defined in main script scope)
           }
+
+
 
          async function updateTask(taskId, taskData) {
              try {
