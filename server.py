@@ -80,6 +80,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password TEXT NOT NULL,
+                    advanced_mode INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -135,6 +136,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     id SERIAL PRIMARY KEY,
                     username VARCHAR(255) UNIQUE NOT NULL,
                     password VARCHAR(255) NOT NULL,
+                    advanced_mode BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -274,26 +276,26 @@ class AuthHandler(SimpleHTTPRequestHandler):
         return True
 
     def normalize_task(self, task):
-         """Convert snake_case database fields to camelCase for API response"""
-         normalized = {
-             'id': task.get('id'),
-             'projectId': task.get('project_id'),
-             'name': task.get('name'),
-             'startDate': task.get('start_date'),
-             'endDate': task.get('end_date'),
-             'dependencies': task.get('dependencies', [])
-         }
-         # Parse dependencies if it's a JSON string
-         if isinstance(normalized['dependencies'], str):
-             try:
-                 normalized['dependencies'] = json.loads(normalized['dependencies'])
-             except json.JSONDecodeError as e:
-                 print(f"Warning: Failed to parse dependencies for task {task.get('id')}: {e}")
-                 normalized['dependencies'] = []
-             except Exception as e:
-                 print(f"Unexpected error parsing dependencies: {e}")
-                 raise
-         return normalized
+        """Convert snake_case database fields to camelCase for API response"""
+        normalized = {
+            'id': task.get('id'),
+            'projectId': task.get('project_id'),
+            'name': task.get('name'),
+            'startDate': task.get('start_date'),
+            'endDate': task.get('end_date'),
+            'dependencies': task.get('dependencies', [])
+        }
+        # Parse dependencies if it's a JSON string
+        if isinstance(normalized['dependencies'], str):
+            try:
+                normalized['dependencies'] = json.loads(normalized['dependencies'])
+            except json.JSONDecodeError as e:
+                print(f"Warning: Failed to parse dependencies for task {task.get('id')}: {e}")
+                normalized['dependencies'] = []
+            except Exception as e:
+                print(f"Unexpected error parsing dependencies: {e}")
+                raise
+        return normalized
 
     def load_projects(self):
         """Load all projects from database"""
@@ -410,29 +412,75 @@ class AuthHandler(SimpleHTTPRequestHandler):
         if token and self.is_session_valid(token):
             return self.sessions[token][0]
         return None
+     
+    def get_user_advanced_mode(self, username):
+        """Get user's advanced_mode setting from database"""
+        try:
+            if USE_POSTGRES:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT advanced_mode FROM users WHERE username = %s', (username,))
+                result = cursor.fetchone()
+                cursor.close()
+                conn.close()
+                return result[0] if result else False
+            else:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('SELECT advanced_mode FROM users WHERE username = ?', (username,))
+                result = cursor.fetchone()
+                cursor.close()
+                conn.close()
+                return bool(result[0]) if result else False
+        except Exception:
+            return False
+     
+    def set_user_advanced_mode(self, username, advanced_mode):
+        """Set user's advanced_mode setting"""
+        try:
+            if USE_POSTGRES:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET advanced_mode = %s WHERE username = %s', 
+                                (advanced_mode, username))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET advanced_mode = ? WHERE username = ?', 
+                                (1 if advanced_mode else 0, username))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            return True
+        except Exception:
+            return False
 
     def send_json(self, status_code, data):
-         """Send JSON response with CORS headers restricted to allowed origins"""
-         self.send_response(status_code)
-         self.send_header('Content-type', 'application/json')
+        """Send JSON response with CORS headers restricted to allowed origins"""
+        self.send_response(status_code)
+        self.send_header('Content-type', 'application/json')
          
-         # Only allow CORS for whitelisted origins, not wildcard
-         origin = self.headers.get('Origin', '')
-         if origin in ALLOWED_ORIGINS:
-             self.send_header('Access-Control-Allow-Origin', origin)
+        # Only allow CORS for whitelisted origins, not wildcard
+        origin = self.headers.get('Origin', '')
+        if origin in ALLOWED_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin', origin)
          
-         self.end_headers()
-         self.wfile.write(json.dumps(data).encode())
+        self.end_headers()
+        self.wfile.write(json.dumps(data).encode())
 
     def do_GET(self):
         parsed_path = urlparse(self.path)
         path_parts = parsed_path.path.split('/')
         
-        # GET /api/auth/me - Get current user
+        # GET /api/auth/me - Get current user with advanced_mode flag
         if parsed_path.path == '/api/auth/me':
             username = self.get_current_user()
             if username:
-                self.send_json(200, {'username': username})
+                advanced_mode = self.get_user_advanced_mode(username)
+                self.send_json(200, {'username': username, 'advanced_mode': advanced_mode})
             else:
                 self.send_json(401, {'error': 'Not authenticated'})
         
@@ -593,7 +641,30 @@ class AuthHandler(SimpleHTTPRequestHandler):
             if token and token in self.sessions:
                 del self.sessions[token]
             self.send_json(200, {'message': 'Logged out successfully'})
-        
+         
+        # POST /api/auth/toggle-advanced - Toggle advanced mode
+        elif parsed_path.path == '/api/auth/toggle-advanced':
+            username = self.get_current_user()
+            if not username:
+                self.send_json(401, {'error': 'Not authenticated'})
+                return
+             
+            try:
+                data = json.loads(body)
+                advanced_mode = data.get('advanced_mode', None)
+                 
+                if advanced_mode is None:
+                    self.send_json(400, {'error': 'advanced_mode field is required'})
+                    return
+                 
+                success = self.set_user_advanced_mode(username, advanced_mode)
+                if success:
+                    self.send_json(200, {'message': 'Advanced mode updated', 'advanced_mode': advanced_mode})
+                else:
+                    self.send_json(500, {'error': 'Failed to update advanced mode'})
+            except json.JSONDecodeError:
+                self.send_json(400, {'error': 'Invalid JSON'})
+         
         # POST /api/projects - Create new project
         elif parsed_path.path == '/api/projects':
             username = self.get_current_user()
@@ -1029,18 +1100,18 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 self.send_json(400, {'error': str(e)})
 
     def do_OPTIONS(self):
-         self.send_response(200)
+        self.send_response(200)
          
-         # Only allow CORS for whitelisted origins, not wildcard
-         origin = self.headers.get('Origin', '')
-         if origin in ALLOWED_ORIGINS:
-             self.send_header('Access-Control-Allow-Origin', origin)
+        # Only allow CORS for whitelisted origins, not wildcard
+        origin = self.headers.get('Origin', '')
+        if origin in ALLOWED_ORIGINS:
+            self.send_header('Access-Control-Allow-Origin', origin)
          
-         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token')
-         self.send_header('Access-Control-Allow-Credentials', 'true')
-         self.send_header('Access-Control-Max-Age', '86400')
-         self.end_headers()
+        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token')
+        self.send_header('Access-Control-Allow-Credentials', 'true')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.end_headers()
 
     def translate_path(self, path):
         if path == '/' or path == '':
@@ -1060,6 +1131,7 @@ def init_database():
                     id SERIAL PRIMARY KEY,
                     username VARCHAR(255) UNIQUE NOT NULL,
                     password VARCHAR(255) NOT NULL,
+                    advanced_mode BOOLEAN DEFAULT FALSE,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -1144,6 +1216,7 @@ def init_database():
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password TEXT NOT NULL,
+                    advanced_mode INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')

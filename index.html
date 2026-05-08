@@ -222,11 +222,52 @@
             font-size: 13px;
         }
 
-        .logout-btn:hover {
-            background: #d32f2f;
+         .logout-btn:hover {
+             background: #d32f2f;
+         }
+
+        .settings-btn {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            font-size: 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
         }
 
-        .main-layout {
+        .settings-btn:hover {
+            background: #1976D2;
+        }
+
+        .settings-section {
+            margin: 20px 0;
+        }
+
+        .settings-section label {
+            display: flex;
+            align-items: center;
+            font-size: 16px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        .settings-section input[type="checkbox"] {
+            margin-right: 10px;
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .settings-description {
+            font-size: 13px;
+            color: #666;
+            margin-left: 28px;
+            line-height: 1.6;
+        }
+
+         .main-layout {
             display: grid;
             grid-template-columns: 320px 1fr;
             gap: 20px;
@@ -728,10 +769,11 @@
     <div class="app-container" id="appContainer">
         <div class="app-header">
             <h1>📊 Task Gantt Chart</h1>
-            <div class="user-info">
-                <span class="username" id="userDisplay"></span>
-                <button class="logout-btn" onclick="logout()">Logout</button>
-            </div>
+             <div class="user-info">
+                 <span class="username" id="userDisplay"></span>
+                 <button class="settings-btn" onclick="openSettingsModal()" title="Settings">⚙️</button>
+                 <button class="logout-btn" onclick="logout()">Logout</button>
+             </div>
         </div>
 
         <div class="main-layout">
@@ -847,15 +889,41 @@
                 <button class="cancel-btn" onclick="closeEditTaskModal()">Cancel</button>
                 <button onclick="saveEditTask()">Save Changes</button>
             </div>
+         </div>
+     </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+            </div>
+            <div class="modal-body">
+                <div class="settings-section">
+                    <label>
+                        <input type="checkbox" id="advancedModeToggle" onchange="toggleAdvancedMode()">
+                        <span>Enable Advanced Mode</span>
+                    </label>
+                    <p class="settings-description">
+                        Advanced mode unlocks premium features:<br>
+                        • Drag and drop tasks to reschedule<br>
+                        • Interactive 3-week timeline window<br>
+                        • Advanced Gantt chart controls
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" onclick="closeSettingsModal()">Close</button>
+            </div>
         </div>
     </div>
 
-    <script>
-        let authToken = localStorage.getItem('authToken');
-        let currentProjectId = null;
-        let projects = [];
-        let currentUser = null;
-        let currentDependencies = [];
+      <script>
+         let authToken = localStorage.getItem('authToken');
+         let currentProjectId = null;
+         let projects = [];
+         let currentUser = null;
+         let currentDependencies = [];
+         let advancedMode = false;  // Feature toggle for advanced features
         let draggedBar = null;
         let dragStartX = null;
         let dragStartY = null;
@@ -1038,26 +1106,28 @@
             }
         });
 
-        async function checkAuth() {
-            try {
-                const response = await apiCall('/api/auth/me', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    currentUser = data.username;
-                    showAppUI();
-                    loadProjects();
-                } else {
-                    localStorage.removeItem('authToken');
-                    authToken = null;
-                    showAuthUI();
-                }
-            } catch (error) {
-                console.error('Auth check failed:', error);
-                showAuthUI();
-            }
-        }
+         async function checkAuth() {
+             try {
+                 const response = await apiCall('/api/auth/me', {
+                     headers: { 'Authorization': `Bearer ${authToken}` }
+                 });
+                 if (response.ok) {
+                     const data = await response.json();
+                     currentUser = data.username;
+                     advancedMode = data.advanced_mode || false;
+                     showAppUI();
+                     updateUIForAdvancedMode();
+                     loadProjects();
+                 } else {
+                     localStorage.removeItem('authToken');
+                     authToken = null;
+                     showAuthUI();
+                 }
+             } catch (error) {
+                 console.error('Auth check failed:', error);
+                 showAuthUI();
+             }
+         }
 
         function showAuthUI() {
             document.body.classList.remove('authenticated');
@@ -1065,18 +1135,33 @@
             document.getElementById('appContainer').classList.remove('show');
         }
 
-        function showAppUI() {
-            document.body.classList.add('authenticated');
-            document.getElementById('authContainer').classList.add('hidden');
-            document.getElementById('appContainer').classList.add('show');
-            document.getElementById('userDisplay').textContent = `👤 ${currentUser}`;
-            
-            // Start session monitoring when app UI is shown
-            resetSessionTimer();
-            startSessionMonitor();
-        }
+         function showAppUI() {
+             document.body.classList.add('authenticated');
+             document.getElementById('authContainer').classList.add('hidden');
+             document.getElementById('appContainer').classList.add('show');
+             document.getElementById('userDisplay').textContent = `👤 ${currentUser}`;
+             
+             // Start session monitoring when app UI is shown
+             resetSessionTimer();
+             startSessionMonitor();
+         }
 
-        function switchToRegister() {
+         function updateUIForAdvancedMode() {
+             // Show/hide advanced features based on toggle
+             const timelineSliderContainer = document.getElementById('timelineSliderContainer');
+             
+             if (advancedMode) {
+                 // Show advanced features
+                 if (timelineSliderContainer) timelineSliderContainer.style.display = 'flex';
+                 document.body.classList.add('advanced-mode');
+             } else {
+                 // Hide advanced features
+                 if (timelineSliderContainer) timelineSliderContainer.style.display = 'none';
+                 document.body.classList.remove('advanced-mode');
+             }
+         }
+
+         function switchToRegister() {
             document.getElementById('loginForm').style.display = 'none';
             document.getElementById('registerForm').style.display = 'block';
         }
@@ -1135,7 +1220,21 @@
                  projects = [];
                  currentProjectId = null;
                  
+                 // Fetch user's advanced mode setting
+                 try {
+                     const meResponse = await apiCall('/api/auth/me', {
+                         headers: { 'Authorization': `Bearer ${authToken}` }
+                     });
+                     if (meResponse.ok) {
+                         const meData = await meResponse.json();
+                         advancedMode = meData.advanced_mode || false;
+                     }
+                 } catch (e) {
+                     advancedMode = false;
+                 }
+                 
                  showAppUI();
+                 updateUIForAdvancedMode();
                  await loadProjects();
             } catch (error) {
                 errorDiv.textContent = 'Connection error';
@@ -1487,13 +1586,57 @@
               modal.classList.add('show');
           }
 
-         function closeEditTaskModal() {
-             const modal = document.getElementById('editTaskModal');
-             modal.classList.remove('show');
-             editingTaskId = null;
+          function closeEditTaskModal() {
+              const modal = document.getElementById('editTaskModal');
+              modal.classList.remove('show');
+              editingTaskId = null;
+          }
+
+         function openSettingsModal() {
+             const modal = document.getElementById('settingsModal');
+             modal.classList.add('show');
+             
+             // Set checkbox state to match current advancedMode
+             document.getElementById('advancedModeToggle').checked = advancedMode;
          }
 
-         async function saveEditTask() {
+         function closeSettingsModal() {
+             const modal = document.getElementById('settingsModal');
+             modal.classList.remove('show');
+         }
+
+         async function toggleAdvancedMode() {
+             const checkbox = document.getElementById('advancedModeToggle');
+             const newMode = checkbox.checked;
+             
+             try {
+                 const response = await apiCall('/api/auth/toggle-advanced', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Authorization': `Bearer ${authToken}`
+                     },
+                     body: JSON.stringify({ advanced_mode: newMode })
+                 });
+                 
+                 if (response.ok) {
+                     advancedMode = newMode;
+                     updateUIForAdvancedMode();
+                     // Re-render Gantt if it exists
+                     if (currentProjectId) {
+                         renderGantt();
+                     }
+                 } else {
+                     checkbox.checked = !newMode;
+                     alert('Failed to update settings');
+                 }
+             } catch (error) {
+                 checkbox.checked = !newMode;
+                 console.error('Error toggling advanced mode:', error);
+             }
+         }
+
+          async function saveEditTask() {
              if (!editingTaskId || !currentProjectId) {
                  alert('Error: No task selected');
                  return;
@@ -1776,20 +1919,24 @@
                 .attr('stroke-width', 1);
 
             // Draw task bars with drag functionality (horizontal and vertical)
-            const bars = svg.selectAll('.gantt-bar')
-                .data(tasks)
-                .enter()
-                .append('g')
-                .attr('class', 'gantt-bar-group')
-                .attr('cursor', 'grab')
-                .on('mousedown', function(event, d) {
-                    draggedBar = d;
-                    dragStartX = event.clientX;
-                    dragStartY = event.clientY;
-                    d3.select(this).classed('dragging', true);
-                    d3.select(this).attr('cursor', 'grabbing');
-                    event.preventDefault();
-                });
+             const bars = svg.selectAll('.gantt-bar')
+                 .data(tasks)
+                 .enter()
+                 .append('g')
+                 .attr('class', 'gantt-bar-group')
+                 .attr('cursor', advancedMode ? 'grab' : 'default');
+             
+             // Only add drag listeners if advanced mode is enabled
+             if (advancedMode) {
+                 bars.on('mousedown', function(event, d) {
+                     draggedBar = d;
+                     dragStartX = event.clientX;
+                     dragStartY = event.clientY;
+                     d3.select(this).classed('dragging', true);
+                     d3.select(this).attr('cursor', 'grabbing');
+                     event.preventDefault();
+                 });
+             }
 
             bars.append('rect')
                 .attr('class', 'gantt-bar')
