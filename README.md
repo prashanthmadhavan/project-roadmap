@@ -2,6 +2,9 @@
 
 An interactive web-based task management application with Gantt chart visualization and dependency tracking.
 
+**🌐 Live Demo**: https://prashanthmadhavan.github.io/project-roadmap/  
+**📦 GitHub Repo**: https://github.com/prashanthmadhavan/project-roadmap
+
 ## Features
 
 - **Task Management**: Create, read, update, and delete tasks with ease
@@ -18,14 +21,14 @@ An interactive web-based task management application with Gantt chart visualizat
 - **Visualization**: D3.js v7
 - **Data Format**: JSON
 
-## Getting Started
+## Quick Start
 
-### Prerequisites
+### Online (No Installation)
+Visit: https://prashanthmadhavan.github.io/project-roadmap/
+- **Note**: Static view only (can view tasks, but cannot add new ones)
+- For full functionality, follow the deployment guide below
 
-- Python 3.6+
-- Modern web browser (Chrome, Firefox, Safari, Edge)
-
-### Installation
+### Local Development
 
 1. Clone the repository:
 ```bash
@@ -38,10 +41,19 @@ cd project-roadmap
 python3 server.py
 ```
 
-3. Open your browser and navigate to:
+3. Open your browser:
 ```
 http://127.0.0.1:5000
 ```
+
+### Deploy Online (With Full Functionality)
+
+**Quick Deployment Options**:
+- **Render.com**: https://render.com (recommended)
+- **Railway.app**: https://railway.app
+- **Replit**: https://replit.com
+
+See [HOSTING.md](HOSTING.md) for detailed deployment instructions for each platform.
 
 ## Usage
 
