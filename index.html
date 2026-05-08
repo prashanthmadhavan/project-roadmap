@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Task Gantt Chart</title>
+    <title>Task Gantt Chart - Multi-Project</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         * {
@@ -18,13 +18,35 @@
             padding: 20px;
         }
 
-        .container {
-            max-width: 1400px;
+        .app-container {
+            max-width: 1600px;
             margin: 0 auto;
+        }
+
+        .app-header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .app-header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        .app-header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .main-layout {
             display: grid;
-            grid-template-columns: 350px 1fr;
+            grid-template-columns: 300px 1fr;
             gap: 20px;
-            height: calc(100vh - 40px);
+            height: calc(100vh - 200px);
         }
 
         .sidebar {
@@ -33,6 +55,21 @@
             padding: 20px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
             overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-section {
+            margin-bottom: 20px;
+        }
+
+        .sidebar-section h2 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .main {
@@ -45,13 +82,7 @@
             overflow: hidden;
         }
 
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-            color: #333;
-        }
-
-        h2 {
+        .main h2 {
             font-size: 16px;
             margin-bottom: 15px;
             color: #555;
@@ -71,6 +102,7 @@
 
         input[type="text"],
         input[type="date"],
+        textarea,
         select {
             width: 100%;
             padding: 8px;
@@ -82,45 +114,16 @@
 
         input[type="text"]:focus,
         input[type="date"]:focus,
+        textarea:focus,
         select:focus {
             outline: none;
             border-color: #4CAF50;
             box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
         }
 
-        .dependencies-list {
-            background: #f9f9f9;
-            border: 1px solid #eee;
-            border-radius: 4px;
-            padding: 10px;
-            max-height: 150px;
-            overflow-y: auto;
-            font-size: 12px;
-        }
-
-        .dependency-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 5px;
-            background: white;
-            margin-bottom: 5px;
-            border-radius: 3px;
-            border: 1px solid #ddd;
-        }
-
-        .dependency-item button {
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            padding: 2px 6px;
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 11px;
-        }
-
-        .dependency-item button:hover {
-            background: #ff5252;
+        textarea {
+            resize: vertical;
+            min-height: 50px;
         }
 
         button {
@@ -133,16 +136,54 @@
             font-size: 13px;
             font-weight: 500;
             width: 100%;
+            transition: background 0.2s;
         }
 
         button:hover {
             background: #45a049;
         }
 
-        .tasks-list {
-            margin-top: 20px;
-            border-top: 1px solid #eee;
-            padding-top: 15px;
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .project-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .project-item {
+            padding: 12px;
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+
+        .project-item:hover {
+            background: #f0f0f0;
+        }
+
+        .project-item.active {
+            background: #e8f5e9;
+            border-left-color: #2e7d32;
+            font-weight: 600;
+        }
+
+        .project-item-name {
+            color: #333;
+            margin-bottom: 3px;
+        }
+
+        .project-item-count {
+            font-size: 12px;
+            color: #999;
         }
 
         .task-item {
@@ -151,6 +192,7 @@
             margin-bottom: 10px;
             border-radius: 4px;
             border-left: 4px solid #4CAF50;
+            font-size: 13px;
         }
 
         .task-item-header {
@@ -163,7 +205,6 @@
         .task-item-name {
             font-weight: 500;
             color: #333;
-            font-size: 13px;
         }
 
         .task-item-dates {
@@ -208,7 +249,7 @@
 
         svg {
             width: 100%;
-            height: 100%;
+            min-height: 100%;
         }
 
         .gantt-bar {
@@ -241,6 +282,20 @@
             stroke-width: 2;
             fill: none;
             marker-end: url(#arrowhead);
+        }
+
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #999;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .empty-state p {
+            font-size: 14px;
         }
 
         .modal {
@@ -299,59 +354,196 @@
             padding: 12px;
             margin-bottom: 15px;
             border-radius: 4px;
-            font-size: 13px;
+            font-size: 12px;
             color: #1565c0;
+        }
+
+        .project-info {
+            background: #f0f7ff;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 12px;
+            color: #1976d2;
+        }
+
+        .dependencies-list {
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+
+        .dependency-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            background: white;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+
+        .dependency-item button {
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .dependency-item button:hover {
+            background: #ff5252;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        .tab {
+            padding: 10px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            color: #666;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .tab.active {
+            color: #4CAF50;
+            border-bottom-color: #4CAF50;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="sidebar">
-            <h1>Tasks</h1>
-            
-            <div class="info-box">
-                Add tasks with start/end dates and dependencies to see them on the Gantt chart
-            </div>
-
-            <div class="form-group">
-                <label>Task Name</label>
-                <input type="text" id="taskName" placeholder="Enter task name">
-            </div>
-
-            <div class="form-group">
-                <label>Start Date</label>
-                <input type="date" id="startDate">
-            </div>
-
-            <div class="form-group">
-                <label>End Date</label>
-                <input type="date" id="endDate">
-            </div>
-
-            <div class="form-group">
-                <label>Dependencies</label>
-                <select id="dependencySelect">
-                    <option value="">Select a task (optional)</option>
-                </select>
-                <button onclick="addDependency()" style="margin-top: 8px;">Add Dependency</button>
-                <div id="dependenciesList" class="dependencies-list"></div>
-            </div>
-
-            <button onclick="addTask()" style="margin-top: 20px;">Add Task</button>
-
-            <div class="tasks-list">
-                <h2>All Tasks</h2>
-                <div id="tasksList"></div>
-            </div>
+    <div class="app-container">
+        <div class="app-header">
+            <h1>Project Roadmap Manager</h1>
+            <p>Multi-project task management with Gantt chart visualization</p>
         </div>
 
-        <div class="main">
-            <h2 style="margin-bottom: 15px;">Gantt Chart with Dependencies</h2>
-            <div id="gantt-container"></div>
+        <div class="main-layout">
+            <div class="sidebar">
+                <!-- Projects Section -->
+                <div class="sidebar-section">
+                    <h2>Projects</h2>
+                    
+                    <div class="info-box">
+                        Create projects and manage tasks with dependencies
+                    </div>
+
+                    <div class="tabs">
+                        <div class="tab active" onclick="switchTab('projects')">All Projects</div>
+                        <div class="tab" onclick="switchTab('newProject')">+ New</div>
+                    </div>
+
+                    <!-- All Projects Tab -->
+                    <div id="projectsTab" class="tab-content active">
+                        <div class="project-list" id="projectsList"></div>
+                    </div>
+
+                    <!-- New Project Tab -->
+                    <div id="newProjectTab" class="tab-content">
+                        <div class="form-group">
+                            <label>Project Name</label>
+                            <input type="text" id="projectName" placeholder="Enter project name">
+                        </div>
+                        <div class="form-group">
+                            <label>Description (optional)</label>
+                            <textarea id="projectDescription" placeholder="Enter project description"></textarea>
+                        </div>
+                        <button onclick="addProject()" style="margin-top: 10px;">Create Project</button>
+                    </div>
+                </div>
+
+                <!-- Tasks Section -->
+                <div class="sidebar-section" id="tasksSection" style="display: none; flex: 1;">
+                    <h2>Tasks</h2>
+                    
+                    <div class="project-info" id="projectInfo"></div>
+
+                    <div class="form-group">
+                        <label>Task Name</label>
+                        <input type="text" id="taskName" placeholder="Enter task name">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Start Date</label>
+                        <input type="date" id="startDate">
+                    </div>
+
+                    <div class="form-group">
+                        <label>End Date</label>
+                        <input type="date" id="endDate">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Dependencies</label>
+                        <select id="dependencySelect">
+                            <option value="">Select a task (optional)</option>
+                        </select>
+                        <button onclick="addDependency()" style="margin-top: 8px;">Add Dependency</button>
+                        <div id="dependenciesList" class="dependencies-list"></div>
+                    </div>
+
+                    <button onclick="addTask()" style="margin-top: 20px;">Add Task</button>
+
+                    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                        <h2 style="margin-bottom: 10px;">Tasks in Project</h2>
+                        <div id="tasksList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="main">
+                <h2 id="chartTitle">Select a project to view tasks and Gantt chart</h2>
+                <div id="gantt-container" class="empty-state">
+                    <p>👈 Select a project from the left to get started</p>
+                </div>
+            </div>
         </div>
     </div>
 
-    <div id="editModal" class="modal">
+    <!-- Edit Project Modal -->
+    <div id="editProjectModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Edit Project</div>
+            <div class="form-group">
+                <label>Project Name</label>
+                <input type="text" id="editProjectName">
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <textarea id="editProjectDescription"></textarea>
+            </div>
+            <div class="modal-buttons">
+                <button class="cancel-btn" onclick="closeEditProjectModal()">Cancel</button>
+                <button onclick="saveProjectEdit()">Save</button>
+                <button class="delete-btn" onclick="deleteProject()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Task Modal -->
+    <div id="editTaskModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">Edit Task</div>
             <div class="form-group">
@@ -367,30 +559,91 @@
                 <input type="date" id="editEndDate">
             </div>
             <div class="modal-buttons">
-                <button class="cancel-btn" onclick="closeEditModal()">Cancel</button>
-                <button onclick="saveEdit()">Save</button>
+                <button class="cancel-btn" onclick="closeEditTaskModal()">Cancel</button>
+                <button onclick="saveTaskEdit()">Save</button>
             </div>
         </div>
     </div>
 
     <script>
-        let tasks = [];
+        let projects = [];
+        let currentProjectId = null;
         let currentDependencies = [];
+        let editingProjectId = null;
         let editingTaskId = null;
 
-        // Load tasks on page load
-        async function loadTasks() {
+        // Load projects on page load
+        async function loadProjects() {
             try {
-                const response = await fetch('/api/tasks');
-                tasks = await response.json();
-                renderTasks();
-                renderGantt();
+                const response = await fetch('/api/projects');
+                projects = await response.json();
+                renderProjectsList();
+                if (projects.length > 0 && !currentProjectId) {
+                    selectProject(projects[0].id);
+                }
             } catch (error) {
-                console.error('Error loading tasks:', error);
+                console.error('Error loading projects:', error);
+            }
+        }
+
+        async function addProject() {
+            const name = document.getElementById('projectName').value.trim();
+            const description = document.getElementById('projectDescription').value.trim();
+
+            if (!name) {
+                alert('Please enter a project name');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/projects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description })
+                });
+
+                if (response.ok) {
+                    document.getElementById('projectName').value = '';
+                    document.getElementById('projectDescription').value = '';
+                    loadProjects();
+                    switchTab('projects');
+                }
+            } catch (error) {
+                console.error('Error adding project:', error);
+            }
+        }
+
+        function selectProject(projectId) {
+            currentProjectId = projectId;
+            currentDependencies = [];
+            document.getElementById('dependenciesList').innerHTML = '';
+            document.getElementById('taskName').value = '';
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            
+            renderProjectsList();
+            renderTasks();
+            renderGantt();
+            
+            const project = projects.find(p => p.id === projectId);
+            if (project) {
+                document.getElementById('chartTitle').textContent = `${project.name} - Gantt Chart`;
+                document.getElementById('projectInfo').innerHTML = `
+                    <strong>${project.name}</strong><br>
+                    ${project.description || 'No description'}<br>
+                    <small>${project.tasks.length} tasks</small>
+                `;
+                document.getElementById('tasksSection').style.display = 'flex';
+                document.getElementById('tasksSection').style.flexDirection = 'column';
             }
         }
 
         async function addTask() {
+            if (!currentProjectId) {
+                alert('Please select a project first');
+                return;
+            }
+
             const name = document.getElementById('taskName').value.trim();
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
@@ -401,7 +654,7 @@
             }
 
             try {
-                const response = await fetch('/api/tasks', {
+                const response = await fetch(`/api/projects/${currentProjectId}/tasks`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -418,7 +671,8 @@
                     document.getElementById('endDate').value = '';
                     currentDependencies = [];
                     document.getElementById('dependenciesList').innerHTML = '';
-                    loadTasks();
+                    loadProjects();
+                    selectProject(currentProjectId);
                 }
             } catch (error) {
                 console.error('Error adding task:', error);
@@ -434,13 +688,8 @@
                 return;
             }
 
-            if (currentDependencies.includes(taskId)) {
-                alert('This dependency is already added');
-                return;
-            }
-
-            const task = tasks.find(t => t.id === taskId);
-            if (task) {
+            const project = projects.find(p => p.id === currentProjectId);
+            if (project && currentDependencies.indexOf(taskId) === -1) {
                 currentDependencies.push(taskId);
                 updateDependenciesDisplay();
             }
@@ -452,9 +701,13 @@
         }
 
         function updateDependenciesDisplay() {
+            const project = projects.find(p => p.id === currentProjectId);
             const container = document.getElementById('dependenciesList');
+            
+            if (!project) return;
+            
             container.innerHTML = currentDependencies.map(depId => {
-                const depTask = tasks.find(t => t.id === depId);
+                const depTask = project.tasks.find(t => t.id === depId);
                 return `
                     <div class="dependency-item">
                         <span>${depTask ? depTask.name : 'Unknown'}</span>
@@ -464,34 +717,85 @@
             }).join('');
         }
 
+        function renderProjectsList() {
+            const container = document.getElementById('projectsList');
+            container.innerHTML = projects.map(project => `
+                <div class="project-item ${project.id === currentProjectId ? 'active' : ''}" 
+                     onclick="selectProject('${project.id}')">
+                    <div class="project-item-name">${project.name}</div>
+                    <div class="project-item-count">${project.tasks.length} tasks</div>
+                </div>
+            `).join('');
+        }
+
+        function renderTasks() {
+            if (!currentProjectId) {
+                document.getElementById('tasksList').innerHTML = '';
+                return;
+            }
+
+            const project = projects.find(p => p.id === currentProjectId);
+            if (!project) return;
+
+            const select = document.getElementById('dependencySelect');
+            select.innerHTML = '<option value="">Select a task (optional)</option>';
+            project.tasks.forEach(task => {
+                const option = document.createElement('option');
+                option.value = task.id;
+                option.textContent = task.name;
+                select.appendChild(option);
+            });
+
+            const container = document.getElementById('tasksList');
+            container.innerHTML = project.tasks.map(task => {
+                const start = new Date(task.startDate).toLocaleDateString();
+                const end = new Date(task.endDate).toLocaleDateString();
+                return `
+                    <div class="task-item">
+                        <div class="task-item-header">
+                            <div class="task-item-name">${task.name}</div>
+                        </div>
+                        <div class="task-item-dates">${start} → ${end}</div>
+                        <div class="task-item-actions">
+                            <button class="edit-btn" onclick="openEditTaskModal('${task.id}')">Edit</button>
+                            <button class="delete-btn" onclick="deleteTask('${task.id}')">Delete</button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
         async function deleteTask(taskId) {
             if (!confirm('Delete this task?')) return;
 
             try {
-                await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
-                loadTasks();
+                await fetch(`/api/projects/${currentProjectId}/tasks/${taskId}`, { method: 'DELETE' });
+                loadProjects();
+                selectProject(currentProjectId);
             } catch (error) {
                 console.error('Error deleting task:', error);
             }
         }
 
-        function openEditModal(taskId) {
+        function openEditTaskModal(taskId) {
             editingTaskId = taskId;
-            const task = tasks.find(t => t.id === taskId);
+            const project = projects.find(p => p.id === currentProjectId);
+            const task = project.tasks.find(t => t.id === taskId);
+            
             if (task) {
                 document.getElementById('editTaskName').value = task.name;
                 document.getElementById('editStartDate').value = task.startDate;
                 document.getElementById('editEndDate').value = task.endDate;
-                document.getElementById('editModal').classList.add('show');
+                document.getElementById('editTaskModal').classList.add('show');
             }
         }
 
-        function closeEditModal() {
-            document.getElementById('editModal').classList.remove('show');
+        function closeEditTaskModal() {
+            document.getElementById('editTaskModal').classList.remove('show');
             editingTaskId = null;
         }
 
-        async function saveEdit() {
+        async function saveTaskEdit() {
             const name = document.getElementById('editTaskName').value.trim();
             const startDate = document.getElementById('editStartDate').value;
             const endDate = document.getElementById('editEndDate').value;
@@ -502,8 +806,10 @@
             }
 
             try {
-                const task = tasks.find(t => t.id === editingTaskId);
-                const response = await fetch(`/api/tasks/${editingTaskId}`, {
+                const project = projects.find(p => p.id === currentProjectId);
+                const task = project.tasks.find(t => t.id === editingTaskId);
+                
+                const response = await fetch(`/api/projects/${currentProjectId}/tasks/${editingTaskId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -515,56 +821,100 @@
                 });
 
                 if (response.ok) {
-                    closeEditModal();
-                    loadTasks();
+                    closeEditTaskModal();
+                    loadProjects();
+                    selectProject(currentProjectId);
                 }
             } catch (error) {
                 console.error('Error saving task:', error);
             }
         }
 
-        function renderTasks() {
-            const container = document.getElementById('tasksList');
-            const select = document.getElementById('dependencySelect');
+        function openEditProjectModal() {
+            if (!currentProjectId) return;
+            
+            const project = projects.find(p => p.id === currentProjectId);
+            if (project) {
+                editingProjectId = currentProjectId;
+                document.getElementById('editProjectName').value = project.name;
+                document.getElementById('editProjectDescription').value = project.description;
+                document.getElementById('editProjectModal').classList.add('show');
+            }
+        }
 
-            // Update select options
-            select.innerHTML = '<option value="">Select a task (optional)</option>';
-            tasks.forEach(task => {
-                const option = document.createElement('option');
-                option.value = task.id;
-                option.textContent = task.name;
-                select.appendChild(option);
-            });
+        function closeEditProjectModal() {
+            document.getElementById('editProjectModal').classList.remove('show');
+            editingProjectId = null;
+        }
 
-            // Render task items
-            container.innerHTML = tasks.map(task => {
-                const start = new Date(task.startDate).toLocaleDateString();
-                const end = new Date(task.endDate).toLocaleDateString();
-                return `
-                    <div class="task-item">
-                        <div class="task-item-header">
-                            <div class="task-item-name">${task.name}</div>
-                        </div>
-                        <div class="task-item-dates">${start} → ${end}</div>
-                        <div class="task-item-actions">
-                            <button class="edit-btn" onclick="openEditModal('${task.id}')">Edit</button>
-                            <button class="delete-btn" onclick="deleteTask('${task.id}')">Delete</button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+        async function saveProjectEdit() {
+            const name = document.getElementById('editProjectName').value.trim();
+            const description = document.getElementById('editProjectDescription').value.trim();
+
+            if (!name) {
+                alert('Please enter a project name');
+                return;
+            }
+
+            try {
+                const response = await fetch(`/api/projects/${editingProjectId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, description })
+                });
+
+                if (response.ok) {
+                    closeEditProjectModal();
+                    loadProjects();
+                    selectProject(editingProjectId);
+                }
+            } catch (error) {
+                console.error('Error saving project:', error);
+            }
+        }
+
+        async function deleteProject() {
+            if (!confirm('Delete this project and all its tasks?')) return;
+
+            try {
+                await fetch(`/api/projects/${editingProjectId}`, { method: 'DELETE' });
+                closeEditProjectModal();
+                currentProjectId = null;
+                loadProjects();
+            } catch (error) {
+                console.error('Error deleting project:', error);
+            }
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            
+            if (tabName === 'projects') {
+                document.getElementById('projectsTab').classList.add('active');
+            } else if (tabName === 'newProject') {
+                document.getElementById('newProjectTab').classList.add('active');
+            }
         }
 
         function renderGantt() {
             const container = document.getElementById('gantt-container');
             container.innerHTML = '';
 
-            if (tasks.length === 0) {
-                container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">Add tasks to see the Gantt chart</div>';
+            if (!currentProjectId) {
+                container.innerHTML = '<div class="empty-state"><p>👈 Select a project to view Gantt chart</p></div>';
                 return;
             }
 
-            // Calculate date range
+            const project = projects.find(p => p.id === currentProjectId);
+            if (!project || project.tasks.length === 0) {
+                container.innerHTML = '<div class="empty-state"><p>📋 No tasks yet. Add a task to see the Gantt chart.</p></div>';
+                return;
+            }
+
+            const tasks = project.tasks;
             const dates = tasks.flatMap(t => [new Date(t.startDate), new Date(t.endDate)]);
             const minDate = new Date(Math.min(...dates));
             const maxDate = new Date(Math.max(...dates));
@@ -580,7 +930,6 @@
                 .append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
 
-            // Add marker for dependency arrows
             svg.append('defs').append('marker')
                 .attr('id', 'arrowhead')
                 .attr('markerWidth', 10)
@@ -601,7 +950,6 @@
                 .range([0, height - margin.bottom])
                 .padding(0.3);
 
-            // Draw grid lines
             svg.selectAll('.grid')
                 .data(xScale.ticks(d3.timeDay))
                 .enter()
@@ -612,7 +960,6 @@
                 .attr('y1', 0)
                 .attr('y2', height - margin.bottom);
 
-            // Draw task bars
             svg.selectAll('.gantt-bar')
                 .data(tasks)
                 .enter()
@@ -623,7 +970,6 @@
                 .attr('width', d => xScale(new Date(d.endDate)) - xScale(new Date(d.startDate)))
                 .attr('height', yScale.bandwidth());
 
-            // Draw task labels
             svg.selectAll('.gantt-text')
                 .data(tasks)
                 .enter()
@@ -635,7 +981,6 @@
                 .attr('dominant-baseline', 'middle')
                 .text(d => d.name);
 
-            // Draw dependency arrows
             tasks.forEach(task => {
                 task.dependencies.forEach(depId => {
                     const depTask = tasks.find(t => t.id === depId);
@@ -645,7 +990,6 @@
                         const x2 = xScale(new Date(task.startDate));
                         const y2 = yScale(task.id) + yScale.bandwidth() / 2;
 
-                        // Draw a curved line with arrow
                         const midX = (x1 + x2) / 2;
                         svg.append('path')
                             .attr('class', 'dependency-line')
@@ -654,22 +998,15 @@
                 });
             });
 
-            // Draw axes
             const xAxis = d3.axisBottom(xScale).ticks(d3.timeDay);
             svg.append('g')
                 .attr('transform', `translate(0,${height - margin.bottom})`)
                 .attr('class', 'gantt-axis')
-                .call(xAxis)
-                .append('text')
-                .attr('x', width / 2)
-                .attr('y', 30)
-                .attr('fill', '#333')
-                .style('text-anchor', 'middle')
-                .text('Timeline');
+                .call(xAxis);
         }
 
         // Initial load
-        loadTasks();
+        loadProjects();
     </script>
 </body>
 </html>

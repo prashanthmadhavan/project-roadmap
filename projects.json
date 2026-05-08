@@ -1,0 +1,335 @@
+[
+  {
+    "id": "1",
+    "name": "Hotel Supply: Connectivity & Local Contracts",
+    "description": "Q1-Q3 initiative for hotel supply chain optimization",
+    "createdAt": "2026-01-01",
+    "tasks": [
+      {
+        "id": "1-1",
+        "name": "Phase 2 Destinations Enabling - Brussels, Copenhagen, Ibiza",
+        "startDate": "2026-02-01",
+        "endDate": "2026-03-15",
+        "dependencies": []
+      },
+      {
+        "id": "1-2",
+        "name": "Phase 3 Destinations Enabling - Amsterdam, Athens, Dublin, Glasgow, Manchester",
+        "startDate": "2026-03-01",
+        "endDate": "2026-03-23",
+        "dependencies": [
+          "1-1"
+        ]
+      },
+      {
+        "id": "1-3",
+        "name": "Phase 4 Destinations Enabling - Barcelona, Istanbul, Malta",
+        "startDate": "2026-04-01",
+        "endDate": "2026-04-23",
+        "dependencies": [
+          "1-2"
+        ]
+      },
+      {
+        "id": "1-4",
+        "name": "Phase 5 Destinations Enabling - Boston, Chicago, Jersey, Marrakech, Miami",
+        "startDate": "2026-05-01",
+        "endDate": "2026-05-26",
+        "dependencies": [
+          "1-3"
+        ]
+      },
+      {
+        "id": "1-5",
+        "name": "Local Contracts Go Live (OJ + Darwin Flow)",
+        "startDate": "2026-05-01",
+        "endDate": "2026-05-31",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "id": "2",
+    "name": "Tech/Platform Work",
+    "description": "Core technology and platform improvements",
+    "createdAt": "2026-03-15",
+    "tasks": [
+      {
+        "id": "2-1",
+        "name": "Revise usefulness of Splunk dashboards",
+        "startDate": "2026-04-01",
+        "endDate": "2026-05-15",
+        "dependencies": []
+      },
+      {
+        "id": "2-2",
+        "name": "Set up monitoring and alerting",
+        "startDate": "2026-05-01",
+        "endDate": "2026-06-30",
+        "dependencies": [
+          "2-1"
+        ]
+      },
+      {
+        "id": "2-3",
+        "name": "Ensure observability is sufficient for troubleshooting",
+        "startDate": "2026-06-01",
+        "endDate": "2026-07-31",
+        "dependencies": [
+          "2-2"
+        ]
+      },
+      {
+        "id": "2-4",
+        "name": "Set up and extend automated regression testing in TBX",
+        "startDate": "2026-04-15",
+        "endDate": "2026-08-31",
+        "dependencies": []
+      },
+      {
+        "id": "2-5",
+        "name": "LC - TravelGate Integration (OJ/TBX)",
+        "startDate": "2026-05-01",
+        "endDate": "2026-08-31",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "id": "3",
+    "name": "Automate Product Setup",
+    "description": "Automation of product loading and setup processes",
+    "createdAt": "2026-04-01",
+    "tasks": [
+      {
+        "id": "3-1",
+        "name": "Automate product setup",
+        "startDate": "2026-04-01",
+        "endDate": "2026-07-31",
+        "dependencies": []
+      },
+      {
+        "id": "3-2",
+        "name": "Automate Agresso setup for supplier info",
+        "startDate": "2026-04-01",
+        "endDate": "2026-06-15",
+        "dependencies": [
+          "3-1"
+        ]
+      },
+      {
+        "id": "3-3",
+        "name": "Product Setup for Transfers",
+        "startDate": "2026-05-15",
+        "endDate": "2026-07-15",
+        "dependencies": [
+          "3-1"
+        ]
+      },
+      {
+        "id": "3-4",
+        "name": "Set up & content for Cars",
+        "startDate": "2026-05-01",
+        "endDate": "2026-06-30",
+        "dependencies": [
+          "3-1"
+        ]
+      },
+      {
+        "id": "3-5",
+        "name": "Automated content loading solution",
+        "startDate": "2026-05-01",
+        "endDate": "2026-08-15",
+        "dependencies": [
+          "3-1"
+        ]
+      },
+      {
+        "id": "3-6",
+        "name": "Product Setup process optimisation",
+        "startDate": "2026-05-01",
+        "endDate": "2026-07-15",
+        "dependencies": [
+          "3-1"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "4",
+    "name": "Pricing Rules",
+    "description": "Pricing system enhancements and rule management",
+    "createdAt": "2026-01-01",
+    "tasks": [
+      {
+        "id": "4-1",
+        "name": "Headline Price + Local Fees API feeds",
+        "startDate": "2026-02-01",
+        "endDate": "2026-04-30",
+        "dependencies": []
+      },
+      {
+        "id": "4-2",
+        "name": "Modular Price Comparison: Dilution Rules",
+        "startDate": "2026-03-01",
+        "endDate": "2026-05-31",
+        "dependencies": [
+          "4-1"
+        ]
+      },
+      {
+        "id": "4-3",
+        "name": "Markup Scheme / Discount Scheme Adjustment",
+        "startDate": "2026-04-01",
+        "endDate": "2026-06-30",
+        "dependencies": [
+          "4-2"
+        ]
+      },
+      {
+        "id": "4-4",
+        "name": "Modular Price Comparison: Close the Gap",
+        "startDate": "2026-03-15",
+        "endDate": "2026-05-15",
+        "dependencies": [
+          "4-1"
+        ]
+      },
+      {
+        "id": "4-5",
+        "name": "CMA Headline Price",
+        "startDate": "2026-05-15",
+        "endDate": "2026-08-31",
+        "dependencies": [
+          "4-1"
+        ]
+      },
+      {
+        "id": "4-6",
+        "name": "Flight Dilution rules",
+        "startDate": "2026-04-15",
+        "endDate": "2026-07-31",
+        "dependencies": [
+          "4-2"
+        ]
+      },
+      {
+        "id": "4-7",
+        "name": "Bundles core pricing rules + enhancements",
+        "startDate": "2026-04-01",
+        "endDate": "2026-08-31",
+        "dependencies": [
+          "4-3"
+        ]
+      },
+      {
+        "id": "4-8",
+        "name": "Minimum Margin Protection",
+        "startDate": "2026-05-15",
+        "endDate": "2026-08-31",
+        "dependencies": [
+          "4-7"
+        ]
+      }
+    ]
+  },
+  {
+    "id": "5",
+    "name": "Training & Operations",
+    "description": "Training programs for team members",
+    "createdAt": "2026-07-01",
+    "tasks": [
+      {
+        "id": "5-1",
+        "name": "Training for Destinations team",
+        "startDate": "2026-07-01",
+        "endDate": "2026-08-15",
+        "dependencies": []
+      },
+      {
+        "id": "5-2",
+        "name": "Training for WNS",
+        "startDate": "2026-07-15",
+        "endDate": "2026-08-31",
+        "dependencies": []
+      },
+      {
+        "id": "5-3",
+        "name": "Training for Pricing",
+        "startDate": "2026-07-15",
+        "endDate": "2026-08-31",
+        "dependencies": []
+      },
+      {
+        "id": "5-4",
+        "name": "Training for BAU testers",
+        "startDate": "2026-07-01",
+        "endDate": "2026-08-15",
+        "dependencies": []
+      },
+      {
+        "id": "5-5",
+        "name": "Training for Operations (Local)",
+        "startDate": "2026-07-15",
+        "endDate": "2026-08-31",
+        "dependencies": []
+      },
+      {
+        "id": "5-6",
+        "name": "Training for Contentful",
+        "startDate": "2026-07-01",
+        "endDate": "2026-08-15",
+        "dependencies": []
+      }
+    ]
+  },
+  {
+    "id": "6",
+    "name": "Hotel Content Model",
+    "description": "Hotel content loading and management",
+    "createdAt": "2026-04-01",
+    "tasks": [
+      {
+        "id": "6-1",
+        "name": "Hotel Content Model setup",
+        "startDate": "2026-04-01",
+        "endDate": "2026-07-31",
+        "dependencies": []
+      },
+      {
+        "id": "6-2",
+        "name": "LC - Smart Contract Loading",
+        "startDate": "2026-06-01",
+        "endDate": "2026-08-31",
+        "dependencies": [
+          "6-1"
+        ]
+      },
+      {
+        "id": "6-3",
+        "name": "Create Tritium IDs (10,500 hotels by end July)",
+        "startDate": "2026-05-15",
+        "endDate": "2026-07-31",
+        "dependencies": [
+          "6-1"
+        ]
+      },
+      {
+        "id": "6-4",
+        "name": "LC - Supplier Contracts & Communication",
+        "startDate": "2026-03-01",
+        "endDate": "2026-07-31",
+        "dependencies": []
+      },
+      {
+        "id": "6-5",
+        "name": "Data Migration & Inventory",
+        "startDate": "2026-05-01",
+        "endDate": "2026-08-31",
+        "dependencies": [
+          "6-4"
+        ]
+      }
+    ]
+  }
+]
