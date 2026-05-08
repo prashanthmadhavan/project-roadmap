@@ -851,17 +851,10 @@
          let authToken = localStorage.getItem('authToken');
          let currentProjectId = null;
           let projects = [];
-          let currentUser = null;
-          let currentDependencies = [];
-         let draggedBar = null;
-        let dragStartX = null;
-        let dragStartY = null;
-        let dragMode = null; // 'horizontal' for date drag, 'vertical' for swimlane drag
-        let isUpdatingTask = false; // Flag to prevent concurrent task updates
-        let pendingTaskUpdate = null; // Queue for pending task update
-        let dragUpdateTimer = null; // Timer for debouncing drag updates
-        
-         // Gantt chart scales (updated during renderGantt)
+           let currentUser = null;
+           let currentDependencies = [];
+         
+          // Gantt chart scales (updated during renderGantt)
           let currentXScale = null;
           let currentYScale = null;
           let currentWidth = null;
@@ -927,98 +920,7 @@
         document.addEventListener('touchstart', resetSessionTimer);
 
         // Global drag event listeners (used by renderGantt)
-        document.addEventListener('mousemove', (event) => {
-            if (!draggedBar || !dragStartX || !currentXScale || !currentTasks) return;
 
-            const deltaX = event.clientX - dragStartX;
-            const deltaY = event.clientY - dragStartY;
-            
-            // Determine drag mode based on initial movement
-            if (!dragMode) {
-                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 5) {
-                    dragMode = 'horizontal';
-                } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
-                    dragMode = 'vertical';
-                }
-            }
-            
-            if (dragMode === 'horizontal') {
-                // Horizontal drag: shift task dates
-                // Calculate total days between min and max date
-                const totalDays = (currentMaxDate - currentMinDate) / (1000 * 60 * 60 * 24);
-                const dayWidth = currentWidth / totalDays;
-                const daysShifted = Math.round(deltaX / dayWidth);
-
-                if (daysShifted === 0) return;
-
-                const startDate = new Date(draggedBar.startDate);
-                const endDate = new Date(draggedBar.endDate);
-                
-                startDate.setDate(startDate.getDate() + daysShifted);
-                endDate.setDate(endDate.getDate() + daysShifted);
-
-                draggedBar.startDate = startDate.toISOString().split('T')[0];
-                draggedBar.endDate = endDate.toISOString().split('T')[0];
-                
-                dragStartX = event.clientX;
-                
-                // Queue update instead of sending immediately - prevents race conditions
-                clearTimeout(dragUpdateTimer);
-                pendingTaskUpdate = { id: draggedBar.id, data: { ...draggedBar } };
-            } else if (dragMode === 'vertical') {
-                // Vertical drag: reorder tasks (swimlane drag)
-                // TaskHeight = bandwidth (height of one task) + padding space
-                const taskHeight = currentYScale.bandwidth() + currentYScale.step() - currentYScale.bandwidth();
-                const newIndex = Math.round(deltaY / taskHeight);
-                
-                // Find current index
-                const currentIndex = currentTasks.findIndex(t => t.id === draggedBar.id);
-                const targetIndex = currentIndex + newIndex;
-                
-                // Reorder tasks array if within bounds
-                if (targetIndex >= 0 && targetIndex < currentTasks.length && newIndex !== 0) {
-                    const [movedTask] = currentTasks.splice(currentIndex, 1);
-                    currentTasks.splice(targetIndex, 0, movedTask);
-                    
-                    // Update project tasks
-                    const project = projects.find(p => p.id === currentProjectId);
-                    if (project) {
-                        project.tasks = currentTasks;
-                    }
-                    
-                    // Re-render with new order
-                    renderGantt();
-                    dragStartY = event.clientY;
-                }
-            }
-        });
-
-        document.addEventListener('mouseup', async () => {
-            clearTimeout(dragUpdateTimer);
-            
-            // Send pending update if one exists and we're not already updating
-            if (draggedBar && pendingTaskUpdate && !isUpdatingTask) {
-                isUpdatingTask = true;
-                try {
-                    await updateTask(pendingTaskUpdate.id, pendingTaskUpdate.data);
-                } finally {
-                    isUpdatingTask = false;
-                }
-            }
-            
-            if (draggedBar) {
-                const svgs = document.querySelectorAll('.gantt-bar-group');
-                svgs.forEach(el => {
-                    el.classList.remove('dragging');
-                    el.setAttribute('cursor', 'grab');
-                });
-            }
-            draggedBar = null;
-            dragStartX = null;
-            dragStartY = null;
-            dragMode = null;
-            pendingTaskUpdate = null;
-        });
 
         // Check if already logged in
         window.addEventListener('load', async () => {
