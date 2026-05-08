@@ -708,6 +708,14 @@
             return div.innerHTML;
         }
 
+        // Wrap fetch calls to reset session timer on API activity
+        async function apiCall(url, options = {}) {
+            resetSessionTimer();  // Mark activity when API call starts
+            const response = await fetch(url, options);
+            resetSessionTimer();  // Mark activity when API response received
+            return response;
+        }
+
         function startSessionMonitor() {
             // Clear any existing interval
             if (sessionCheckInterval) clearInterval(sessionCheckInterval);
@@ -839,10 +847,10 @@
         });
 
         async function checkAuth() {
-            try {
-                const response = await fetch('/api/auth/me', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
+             try {
+                 const response = await apiCall('/api/auth/me', {
+                     headers: { 'Authorization': `Bearer ${authToken}` }
+                 });
                 if (response.ok) {
                     const data = await response.json();
                     currentUser = data.username;
@@ -912,12 +920,12 @@
                 return;
             }
 
-            try {
-                const response = await fetch('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+             try {
+                 const response = await apiCall('/api/auth/login', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ username, password })
+                 });
 
                 const data = await response.json();
 
@@ -952,12 +960,12 @@
                 return;
             }
 
-            try {
-                const response = await fetch('/api/auth/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+             try {
+                 const response = await apiCall('/api/auth/register', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ username, password })
+                 });
 
                 const data = await response.json();
 
@@ -1003,7 +1011,7 @@
 
         async function loadProjects() {
              try {
-                 const response = await fetch('/api/projects', {
+                 const response = await apiCall('/api/projects', {
                      headers: { 'Authorization': `Bearer ${authToken}` }
                  });
                  
@@ -1031,15 +1039,15 @@
                 return;
             }
 
-            try {
-                const response = await fetch('/api/projects', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({ name, description })
-                });
+             try {
+                 const response = await apiCall('/api/projects', {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Authorization': `Bearer ${authToken}`
+                     },
+                     body: JSON.stringify({ name, description })
+                 });
 
                 if (response.ok) {
                     document.getElementById('projectName').value = '';
@@ -1178,20 +1186,20 @@
              // Auto-add dependency if one is selected
              const dependencies = dependencyId ? [dependencyId] : [];
 
-            try {
-                const response = await fetch(`/api/projects/${currentProjectId}/tasks`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({
-                        name,
-                        startDate,
-                        endDate,
-                        dependencies
-                    })
-                });
+             try {
+                 const response = await apiCall(`/api/projects/${currentProjectId}/tasks`, {
+                     method: 'POST',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Authorization': `Bearer ${authToken}`
+                     },
+                     body: JSON.stringify({
+                         name,
+                         startDate,
+                         endDate,
+                         dependencies
+                     })
+                 });
 
                 if (response.ok) {
                      document.getElementById('taskName').value = '';
@@ -1210,20 +1218,20 @@
              }
         }
 
-        async function deleteTask(taskId) {
-            if (!confirm('Delete this task?')) return;
+         async function deleteTask(taskId) {
+             if (!confirm('Delete this task?')) return;
 
-            try {
-                await fetch(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                loadProjects();
-                selectProject(currentProjectId);
-            } catch (error) {
-                console.error('Error deleting task:', error);
-            }
-        }
+             try {
+                 await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
+                     method: 'DELETE',
+                     headers: { 'Authorization': `Bearer ${authToken}` }
+                 });
+                 loadProjects();
+                 selectProject(currentProjectId);
+             } catch (error) {
+                 console.error('Error deleting task:', error);
+             }
+         }
 
         function renderProjectsList() {
              const container = document.getElementById('projectsList');
@@ -1552,21 +1560,21 @@
             // Drag event listeners are now global (defined in main script scope)
         }
 
-        async function updateTask(taskId, taskData) {
-            try {
-                const response = await fetch(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${authToken}`
-                    },
-                    body: JSON.stringify({
-                        name: taskData.name,
-                        startDate: taskData.startDate,
-                        endDate: taskData.endDate,
-                        dependencies: taskData.dependencies
-                    })
-                });
+         async function updateTask(taskId, taskData) {
+             try {
+                 const response = await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
+                     method: 'PUT',
+                     headers: {
+                         'Content-Type': 'application/json',
+                         'Authorization': `Bearer ${authToken}`
+                     },
+                     body: JSON.stringify({
+                         name: taskData.name,
+                         startDate: taskData.startDate,
+                         endDate: taskData.endDate,
+                         dependencies: taskData.dependencies
+                     })
+                 });
                 
                 if (response.ok) {
                     // Reload projects to get latest data from server
