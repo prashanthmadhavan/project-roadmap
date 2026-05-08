@@ -18,12 +18,13 @@ if USE_POSTGRES:
     try:
         import psycopg2
         from psycopg2.extras import RealDictCursor
-        print("PostgreSQL mode enabled")
+        print("✓ PostgreSQL mode enabled (DATABASE_URL set)")
     except ImportError:
-        print("psycopg2 not available, falling back to SQLite")
+        print("✗ psycopg2 not available, falling back to SQLite")
         USE_POSTGRES = False
 else:
-    print(f"Using SQLite database: {DB_FILE}")
+    print(f"⚠ DATABASE_URL not set - using SQLite: {DB_FILE}")
+    print("  Note: SQLite data may not persist on Render. Use PostgreSQL for reliable storage.")
 
 # Session timeout in seconds (15 minutes)
 SESSION_TIMEOUT = 15 * 60
@@ -1072,9 +1073,9 @@ def init_database():
             conn.commit()
             cursor.close()
             conn.close()
-            print("PostgreSQL database initialized successfully")
+            print("✓ PostgreSQL database schema initialized")
         except Exception as e:
-            print(f"Warning: Could not initialize PostgreSQL database: {e}")
+            print(f"✗ PostgreSQL initialization error: {e}")
     else:
         # SQLite initialization
         conn = sqlite3.connect(DB_FILE)
@@ -1154,9 +1155,9 @@ def init_database():
                     )
             
             conn.commit()
-            print("SQLite database initialized successfully")
+            print("✓ SQLite database schema initialized")
         except Exception as e:
-            print(f"Warning: Could not initialize SQLite database: {e}")
+            print(f"✗ SQLite initialization error: {e}")
         finally:
             cursor.close()
             conn.close()
