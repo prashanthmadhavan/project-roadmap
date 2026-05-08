@@ -685,6 +685,17 @@ class AuthHandler(SimpleHTTPRequestHandler):
                         self.send_json(404, {'error': 'Project not found'})
                         return
                     
+                    # Check for duplicate task name in this project (Defect #9 fix)
+                    task_name = data.get('name', '').strip()
+                    if task_name:
+                        cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = %s AND LOWER(name) = LOWER(%s)', 
+                                      (project_id, task_name))
+                        if cursor.fetchone()[0] > 0:
+                            cursor.close()
+                            conn.close()
+                            self.send_json(400, {'error': f'Task name "{task_name}" already exists in this project'})
+                            return
+                    
                     task_id = str(int(time.time() * 1000))
                     dependencies_json = json.dumps(data.get('dependencies', []))
                     
@@ -708,6 +719,17 @@ class AuthHandler(SimpleHTTPRequestHandler):
                         conn.close()
                         self.send_json(404, {'error': 'Project not found'})
                         return
+                    
+                    # Check for duplicate task name in this project (Defect #9 fix)
+                    task_name = data.get('name', '').strip()
+                    if task_name:
+                        cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = ? AND LOWER(name) = LOWER(?)', 
+                                      (project_id, task_name))
+                        if cursor.fetchone()[0] > 0:
+                            cursor.close()
+                            conn.close()
+                            self.send_json(400, {'error': f'Task name "{task_name}" already exists in this project'})
+                            return
                     
                     task_id = str(int(time.time() * 1000))
                     dependencies_json = json.dumps(data.get('dependencies', []))
@@ -834,16 +856,27 @@ class AuthHandler(SimpleHTTPRequestHandler):
                         return
                     
                     # Verify task exists
-                    cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
-                    task = cursor.fetchone()
-                    
-                    if not task:
-                        cursor.close()
-                        conn.close()
-                        self.send_json(404, {'error': 'Task not found'})
-                        return
-                    
-                    # Update task
+                     cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
+                     task = cursor.fetchone()
+                     
+                     if not task:
+                         cursor.close()
+                         conn.close()
+                         self.send_json(404, {'error': 'Task not found'})
+                         return
+                     
+                     # Check for duplicate task name (excluding current task) - Defect #9 fix
+                     new_name = data.get('name', task['name']).strip()
+                     if new_name != task['name']:  # Only check if name changed
+                         cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = %s AND id != %s AND LOWER(name) = LOWER(%s)', 
+                                       (project_id, task_id, new_name))
+                         if cursor.fetchone()[0] > 0:
+                             cursor.close()
+                             conn.close()
+                             self.send_json(400, {'error': f'Task name "{new_name}" already exists in this project'})
+                             return
+                     
+                     # Update task
                     dependencies_json = json.dumps(data.get('dependencies', task['dependencies'] if task['dependencies'] else []))
                     cursor.execute(
                         'UPDATE tasks SET name = %s, start_date = %s, end_date = %s, dependencies = %s WHERE id = %s',
@@ -879,14 +912,25 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     cursor.execute('SELECT * FROM tasks WHERE id = ? AND project_id = ?', (task_id, project_id))
                     task = cursor.fetchone()
                     
-                    if not task:
-                        cursor.close()
-                        conn.close()
-                        self.send_json(404, {'error': 'Task not found'})
-                        return
-                    
-                    # Update task
-                    task_dict = dict(task)
+                     if not task:
+                         cursor.close()
+                         conn.close()
+                         self.send_json(404, {'error': 'Task not found'})
+                         return
+                     
+                     # Check for duplicate task name (excluding current task) - Defect #9 fix
+                     task_dict = dict(task)
+                     new_name = data.get('name', task_dict['name']).strip()
+                     if new_name != task_dict['name']:  # Only check if name changed
+                         cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = ? AND id != ? AND LOWER(name) = LOWER(?)', 
+                                       (project_id, task_id, new_name))
+                         if cursor.fetchone()[0] > 0:
+                             cursor.close()
+                             conn.close()
+                             self.send_json(400, {'error': f'Task name "{new_name}" already exists in this project'})
+                             return
+                     
+                     # Update task
                     dependencies_json = json.dumps(data.get('dependencies', task_dict['dependencies'] if task_dict.get('dependencies') else []))
                     cursor.execute(
                         'UPDATE tasks SET name = ?, start_date = ?, end_date = ?, dependencies = ? WHERE id = ?',
