@@ -380,22 +380,22 @@ class AuthHandler(SimpleHTTPRequestHandler):
         return f"{salt}${hash_obj.hex()}"
 
     def verify_password(self, password, hashed):
-         """Verify password against hash"""
-         try:
-             parts = hashed.split('$')
-             if len(parts) != 2:
-                 print(f"Warning: Invalid password hash format (expected 2 parts, got {len(parts)})")
-                 return False
-             
-             salt, hash_hex = parts
-             hash_obj = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
-             return hash_hex == hash_obj.hex()
-         except ValueError as e:
-             print(f"Error verifying password: Invalid hash format - {e}")
-             return False
-         except Exception as e:
-             print(f"Critical error during password verification: {e}")
-             raise
+        """Verify password against hash"""
+        try:
+            parts = hashed.split('$')
+            if len(parts) != 2:
+                print(f"Warning: Invalid password hash format (expected 2 parts, got {len(parts)})")
+                return False
+            
+            salt, hash_hex = parts
+            hash_obj = hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 100000)
+            return hash_hex == hash_obj.hex()
+        except ValueError as e:
+            print(f"Error verifying password: Invalid hash format - {e}")
+            return False
+        except Exception as e:
+            print(f"Critical error during password verification: {e}")
+            raise
 
     def get_auth_token(self):
         """Extract auth token from headers"""
