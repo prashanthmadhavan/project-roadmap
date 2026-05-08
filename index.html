@@ -677,6 +677,9 @@
         let dragStartX = null;
         let dragStartY = null;
         let dragMode = null; // 'horizontal' for date drag, 'vertical' for swimlane drag
+        let isUpdatingTask = false; // Flag to prevent concurrent task updates
+        let pendingTaskUpdate = null; // Queue for pending task update
+        let dragUpdateTimer = null; // Timer for debouncing drag updates
         
         // Gantt chart scales (updated during renderGantt)
         let currentXScale = null;
@@ -768,7 +771,10 @@
                 draggedBar.endDate = endDate.toISOString().split('T')[0];
                 
                 dragStartX = event.clientX;
-                updateTask(draggedBar.id, draggedBar);
+                
+                // Queue update instead of sending immediately - prevents race conditions
+                clearTimeout(dragUpdateTimer);
+                pendingTaskUpdate = { id: draggedBar.id, data: { ...draggedBar } };
             } else if (dragMode === 'vertical') {
                 // Vertical drag: reorder tasks (swimlane drag)
                 const taskHeight = currentYScale.bandwidth() + currentYScale.padding() * currentYScale.bandwidth();
@@ -796,7 +802,19 @@
             }
         });
 
-        document.addEventListener('mouseup', () => {
+        document.addEventListener('mouseup', async () => {
+            clearTimeout(dragUpdateTimer);
+            
+            // Send pending update if one exists and we're not already updating
+            if (draggedBar && pendingTaskUpdate && !isUpdatingTask) {
+                isUpdatingTask = true;
+                try {
+                    await updateTask(pendingTaskUpdate.id, pendingTaskUpdate.data);
+                } finally {
+                    isUpdatingTask = false;
+                }
+            }
+            
             if (draggedBar) {
                 const svgs = document.querySelectorAll('.gantt-bar-group');
                 svgs.forEach(el => {
@@ -808,6 +826,7 @@
             dragStartX = null;
             dragStartY = null;
             dragMode = null;
+            pendingTaskUpdate = null;
         });
 
         // Check if already logged in
