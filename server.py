@@ -80,6 +80,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password TEXT NOT NULL,
+                    advanced_mode INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -412,7 +413,52 @@ class AuthHandler(SimpleHTTPRequestHandler):
             return self.sessions[token][0]
         return None
      
-     def send_json(self, status_code, data):
+    def get_user_advanced_mode(self, username):
+        """Get user's advanced_mode setting from database"""
+        try:
+            if USE_POSTGRES:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('SELECT advanced_mode FROM users WHERE username = %s', (username,))
+                result = cursor.fetchone()
+                cursor.close()
+                conn.close()
+                return result[0] if result else False
+            else:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('SELECT advanced_mode FROM users WHERE username = ?', (username,))
+                result = cursor.fetchone()
+                cursor.close()
+                conn.close()
+                return bool(result[0]) if result else False
+        except Exception:
+            return False
+     
+    def set_user_advanced_mode(self, username, advanced_mode):
+        """Set user's advanced_mode setting"""
+        try:
+            if USE_POSTGRES:
+                conn = self.get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET advanced_mode = %s WHERE username = %s', 
+                                (advanced_mode, username))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            else:
+                conn = sqlite3.connect(DB_PATH)
+                cursor = conn.cursor()
+                cursor.execute('UPDATE users SET advanced_mode = ? WHERE username = ?', 
+                                (1 if advanced_mode else 0, username))
+                conn.commit()
+                cursor.close()
+                conn.close()
+            return True
+        except Exception:
+            return False
+
+    def send_json(self, status_code, data):
         """Send JSON response with CORS headers restricted to allowed origins"""
         self.send_response(status_code)
         self.send_header('Content-type', 'application/json')
@@ -429,13 +475,14 @@ class AuthHandler(SimpleHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path_parts = parsed_path.path.split('/')
         
-         # GET /api/auth/me - Get current user
-         if parsed_path.path == '/api/auth/me':
-             username = self.get_current_user()
-             if username:
-                 self.send_json(200, {'username': username})
-             else:
-                 self.send_json(401, {'error': 'Not authenticated'})
+        # GET /api/auth/me - Get current user with advanced_mode flag
+        if parsed_path.path == '/api/auth/me':
+            username = self.get_current_user()
+            if username:
+                advanced_mode = self.get_user_advanced_mode(username)
+                self.send_json(200, {'username': username, 'advanced_mode': advanced_mode})
+            else:
+                self.send_json(401, {'error': 'Not authenticated'})
         
         # GET /api/projects - Get user's projects
         elif parsed_path.path == '/api/projects':
@@ -596,7 +643,29 @@ class AuthHandler(SimpleHTTPRequestHandler):
             self.send_json(200, {'message': 'Logged out successfully'})
          
         # POST /api/auth/toggle-advanced - Toggle advanced mode
-         # POST /api/projects - Create new project
+        elif parsed_path.path == '/api/auth/toggle-advanced':
+            username = self.get_current_user()
+            if not username:
+                self.send_json(401, {'error': 'Not authenticated'})
+                return
+             
+            try:
+                data = json.loads(body)
+                advanced_mode = data.get('advanced_mode', None)
+                 
+                if advanced_mode is None:
+                    self.send_json(400, {'error': 'advanced_mode field is required'})
+                    return
+                 
+                success = self.set_user_advanced_mode(username, advanced_mode)
+                if success:
+                    self.send_json(200, {'message': 'Advanced mode updated', 'advanced_mode': advanced_mode})
+                else:
+                    self.send_json(500, {'error': 'Failed to update advanced mode'})
+            except json.JSONDecodeError:
+                self.send_json(400, {'error': 'Invalid JSON'})
+         
+        # POST /api/projects - Create new project
         elif parsed_path.path == '/api/projects':
             username = self.get_current_user()
             if not username:
@@ -685,7 +754,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                         self.send_json(404, {'error': 'Project not found'})
                         return
                     
-                    # Check for duplicate task name in this project (Defect #9 fix)
+                    # Check for duplicate task name (Defect #9)
                     task_name = data.get('name', '').strip()
                     if task_name:
                         cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = %s AND LOWER(name) = LOWER(%s)', 
@@ -720,7 +789,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                         self.send_json(404, {'error': 'Project not found'})
                         return
                     
-                    # Check for duplicate task name in this project (Defect #9 fix)
+                    # Check for duplicate task name (Defect #9)
                     task_name = data.get('name', '').strip()
                     if task_name:
                         cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = ? AND LOWER(name) = LOWER(?)', 
@@ -856,27 +925,16 @@ class AuthHandler(SimpleHTTPRequestHandler):
                         return
                     
                     # Verify task exists
-                     cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
-                     task = cursor.fetchone()
-                     
-                     if not task:
-                         cursor.close()
-                         conn.close()
-                         self.send_json(404, {'error': 'Task not found'})
-                         return
-                     
-                     # Check for duplicate task name (excluding current task) - Defect #9 fix
-                     new_name = data.get('name', task['name']).strip()
-                     if new_name != task['name']:  # Only check if name changed
-                         cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = %s AND id != %s AND LOWER(name) = LOWER(%s)', 
-                                       (project_id, task_id, new_name))
-                         if cursor.fetchone()[0] > 0:
-                             cursor.close()
-                             conn.close()
-                             self.send_json(400, {'error': f'Task name "{new_name}" already exists in this project'})
-                             return
-                     
-                     # Update task
+                    cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
+                    task = cursor.fetchone()
+                    
+                    if not task:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Task not found'})
+                        return
+                    
+                    # Update task
                     dependencies_json = json.dumps(data.get('dependencies', task['dependencies'] if task['dependencies'] else []))
                     cursor.execute(
                         'UPDATE tasks SET name = %s, start_date = %s, end_date = %s, dependencies = %s WHERE id = %s',
@@ -912,25 +970,14 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     cursor.execute('SELECT * FROM tasks WHERE id = ? AND project_id = ?', (task_id, project_id))
                     task = cursor.fetchone()
                     
-                     if not task:
-                         cursor.close()
-                         conn.close()
-                         self.send_json(404, {'error': 'Task not found'})
-                         return
-                     
-                     # Check for duplicate task name (excluding current task) - Defect #9 fix
-                     task_dict = dict(task)
-                     new_name = data.get('name', task_dict['name']).strip()
-                     if new_name != task_dict['name']:  # Only check if name changed
-                         cursor.execute('SELECT COUNT(*) FROM tasks WHERE project_id = ? AND id != ? AND LOWER(name) = LOWER(?)', 
-                                       (project_id, task_id, new_name))
-                         if cursor.fetchone()[0] > 0:
-                             cursor.close()
-                             conn.close()
-                             self.send_json(400, {'error': f'Task name "{new_name}" already exists in this project'})
-                             return
-                     
-                     # Update task
+                    if not task:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Task not found'})
+                        return
+                    
+                    # Update task
+                    task_dict = dict(task)
                     dependencies_json = json.dumps(data.get('dependencies', task_dict['dependencies'] if task_dict.get('dependencies') else []))
                     cursor.execute(
                         'UPDATE tasks SET name = ?, start_date = ?, end_date = ?, dependencies = ? WHERE id = ?',
@@ -1136,56 +1183,47 @@ def init_database():
                 )
             ''')
             
-             # Create demo user if it doesn't exist
-             try:
-                 cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
-                 demo_exists = cursor.fetchone()[0] > 0
-                 
-                 if not demo_exists:
-                     print("  Creating demo user...")
-                     # Create demo user with proper hashing
-                     demo_password = AuthHandler.hash_password(None, 'Demo@1234')
-                     
-                      cursor.execute(
-                          'INSERT INTO users (username, password) VALUES (%s, %s)',
-                          ('demo', demo_password)
-                      )
-                     print("  ✓ Demo user created")
-                     
-                     # Create demo project
-                     project_id = str(int(time.time() * 1000))
-                     today = datetime.now().date()
-                     cursor.execute(
-                         'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
-                         (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
-                     )
-                     print("  ✓ Demo project created")
-                     
-                     # Create sample tasks
-                     tasks = [
-                         ('Design mockups', today, today + timedelta(days=3)),
-                         ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
-                         ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
-                         ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
-                         ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
-                     ]
-                     
-                     for idx, (name, start, end) in enumerate(tasks):
-                         task_id = str(int(time.time() * 1000) + idx)
-                         cursor.execute(
-                             'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
-                             (task_id, project_id, name, start, end, '[]')
-                         )
-                     print(f"  ✓ Demo project loaded with {len(tasks)} sample tasks")
-                 else:
-                     print("  ✓ Demo user already exists")
-             except Exception as e:
-                 print(f"  ⚠ Demo user setup error: {e}")
-             
-             conn.commit()
-             cursor.close()
-             conn.close()
-             print("✓ PostgreSQL database schema initialized successfully")
+            # Create demo user if it doesn't exist
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
+            if cursor.fetchone()[0] == 0:
+                # Create demo user
+                salt = secrets.token_hex(16)
+                hash_obj = hashlib.pbkdf2_hmac('sha256', 'Demo@1234'.encode(), salt.encode(), 100000)
+                demo_password = f"{salt}${hash_obj.hex()}"
+                
+                cursor.execute(
+                    'INSERT INTO users (username, password) VALUES (%s, %s)',
+                    ('demo', demo_password)
+                )
+                
+                # Create demo project
+                project_id = str(int(time.time() * 1000))
+                today = datetime.now().date()
+                cursor.execute(
+                    'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                    (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+                )
+                
+                # Create sample tasks
+                tasks = [
+                    ('Design mockups', today, today + timedelta(days=3)),
+                    ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                    ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                    ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                    ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+                ]
+                
+                for idx, (name, start, end) in enumerate(tasks):
+                    task_id = str(int(time.time() * 1000) + idx)
+                    cursor.execute(
+                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
+                        (task_id, project_id, name, start, end, '[]')
+                    )
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print("✓ PostgreSQL database schema initialized")
         except Exception as e:
             print(f"✗ PostgreSQL initialization error: {e}")
     else:
@@ -1194,15 +1232,16 @@ def init_database():
         cursor = conn.cursor()
         
         try:
-             # Create users table
-             cursor.execute('''
-                 CREATE TABLE IF NOT EXISTS users (
-                     id SERIAL PRIMARY KEY,
-                     username VARCHAR(255) UNIQUE NOT NULL,
-                     password VARCHAR(255) NOT NULL,
-                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                 )
-             ''')
+            # Create users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    advanced_mode INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
             
             # Create projects table
             cursor.execute('''
@@ -1229,55 +1268,45 @@ def init_database():
                 )
             ''')
             
-             # Create demo user if it doesn't exist
-             try:
-                 cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
-                 demo_exists = cursor.fetchone()[0] > 0
-                 
-                 if not demo_exists:
-                     print("  Creating demo user...")
-                     # Create demo user with proper hashing (using the hash_password static method)
-                     handler = AuthHandler(None, None, None)
-                     demo_password = handler.hash_password('Demo@1234')
-                     
-                      cursor.execute(
-                          'INSERT INTO users (username, password) VALUES (?, ?)',
-                          ('demo', demo_password)
-                      )
-                     print("  ✓ Demo user created")
-                     
-                     # Create demo project
-                     project_id = str(int(time.time() * 1000))
-                     today = datetime.now().date()
-                     cursor.execute(
-                         'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
-                         (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
-                     )
-                     print("  ✓ Demo project created")
-                     
-                     # Create sample tasks
-                     tasks = [
-                         ('Design mockups', today, today + timedelta(days=3)),
-                         ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
-                         ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
-                         ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
-                         ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
-                     ]
-                     
-                     for idx, (name, start, end) in enumerate(tasks):
-                         task_id = str(int(time.time() * 1000) + idx)
-                         cursor.execute(
-                             'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
-                             (task_id, project_id, name, start, end, '[]')
-                         )
-                     print(f"  ✓ Demo project loaded with {len(tasks)} sample tasks")
-                 else:
-                     print("  ✓ Demo user already exists")
-             except Exception as e:
-                 print(f"  ⚠ Demo user setup error: {e}")
-             
-             conn.commit()
-             print("✓ SQLite database schema initialized successfully")
+            # Create demo user if it doesn't exist
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
+            if cursor.fetchone()[0] == 0:
+                # Create demo user
+                salt = secrets.token_hex(16)
+                hash_obj = hashlib.pbkdf2_hmac('sha256', 'Demo@1234'.encode(), salt.encode(), 100000)
+                demo_password = f"{salt}${hash_obj.hex()}"
+                
+                cursor.execute(
+                    'INSERT INTO users (username, password) VALUES (?, ?)',
+                    ('demo', demo_password)
+                )
+                
+                # Create demo project
+                project_id = str(int(time.time() * 1000))
+                today = datetime.now().date()
+                cursor.execute(
+                    'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
+                    (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+                )
+                
+                # Create sample tasks
+                tasks = [
+                    ('Design mockups', today, today + timedelta(days=3)),
+                    ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                    ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                    ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                    ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+                ]
+                
+                for idx, (name, start, end) in enumerate(tasks):
+                    task_id = str(int(time.time() * 1000) + idx)
+                    cursor.execute(
+                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
+                        (task_id, project_id, name, start, end, '[]')
+                    )
+            
+            conn.commit()
+            print("✓ SQLite database schema initialized")
         except Exception as e:
             print(f"✗ SQLite initialization error: {e}")
         finally:
