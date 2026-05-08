@@ -836,6 +836,12 @@
                     <label>End Date</label>
                     <input type="date" id="editEndDate">
                 </div>
+                <div class="form-group">
+                    <label>Add Dependency</label>
+                    <select id="editDependencySelect">
+                        <option value="">None</option>
+                    </select>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="cancel-btn" onclick="closeEditTaskModal()">Cancel</button>
@@ -1121,12 +1127,16 @@
                     return;
                 }
 
-                authToken = data.token;
-                localStorage.setItem('authToken', authToken);
-                currentUser = data.username;
-                
-                showAppUI();
-                loadProjects();
+                 authToken = data.token;
+                 localStorage.setItem('authToken', authToken);
+                 currentUser = data.username;
+                 
+                 // Clear old data before loading new user's projects
+                 projects = [];
+                 currentProjectId = null;
+                 
+                 showAppUI();
+                 await loadProjects();
             } catch (error) {
                 errorDiv.textContent = 'Connection error';
                 errorDiv.classList.add('show');
@@ -1405,14 +1415,14 @@
                      })
                  });
 
-                if (response.ok) {
-                     document.getElementById('taskName').value = '';
-                     document.getElementById('startDate').value = '';
-                     document.getElementById('endDate').value = '';
-                     document.getElementById('dependencySelect').value = '';
-                     loadProjects();
-                     selectProject(currentProjectId);
-                 } else {
+                 if (response.ok) {
+                      document.getElementById('taskName').value = '';
+                      document.getElementById('startDate').value = '';
+                      document.getElementById('endDate').value = '';
+                      document.getElementById('dependencySelect').value = '';
+                      await loadProjects();
+                      selectProject(currentProjectId);
+                  } else {
                      const error = await response.json();
                      alert(`Failed to add task: ${error.error || 'Unknown error'}`);
                  }
@@ -1439,24 +1449,43 @@
 
          let editingTaskId = null;
 
-         function openEditTaskModal(taskId) {
-             const project = projects.find(p => p.id === currentProjectId);
-             if (!project) return;
-             
-             const task = project.tasks.find(t => t.id === taskId);
-             if (!task) return;
-             
-             editingTaskId = taskId;
-             
-             // Populate form with current task data
-             document.getElementById('editTaskName').value = task.name;
-             document.getElementById('editStartDate').value = task.startDate;
-             document.getElementById('editEndDate').value = task.endDate;
-             
-             // Show modal
-             const modal = document.getElementById('editTaskModal');
-             modal.classList.add('show');
-         }
+          function openEditTaskModal(taskId) {
+              const project = projects.find(p => p.id === currentProjectId);
+              if (!project) return;
+              
+              const task = project.tasks.find(t => t.id === taskId);
+              if (!task) return;
+              
+              editingTaskId = taskId;
+              
+              // Populate form with current task data
+              document.getElementById('editTaskName').value = task.name;
+              document.getElementById('editStartDate').value = task.startDate;
+              document.getElementById('editEndDate').value = task.endDate;
+              
+              // Populate dependency select
+              const depSelect = document.getElementById('editDependencySelect');
+              depSelect.innerHTML = '<option value="">None</option>';
+              
+              // Add all other tasks as dependency options
+              project.tasks.forEach(t => {
+                  if (t.id !== taskId) {
+                      const option = document.createElement('option');
+                      option.value = t.id;
+                      option.textContent = t.name;
+                      
+                      // Select if this task is a dependency of current task
+                      if (task.dependencies && task.dependencies.includes(t.id)) {
+                          option.selected = true;
+                      }
+                      depSelect.appendChild(option);
+                  }
+              });
+              
+              // Show modal
+              const modal = document.getElementById('editTaskModal');
+              modal.classList.add('show');
+          }
 
          function closeEditTaskModal() {
              const modal = document.getElementById('editTaskModal');
@@ -1493,18 +1522,22 @@
                  return;
              }
 
-             try {
-                 const project = projects.find(p => p.id === currentProjectId);
-                 const task = project.tasks.find(t => t.id === editingTaskId);
-                 
-                 await updateTask(editingTaskId, {
-                     name,
-                     startDate,
-                     endDate,
-                     dependencies: task.dependencies
-                 });
+              try {
+                  const project = projects.find(p => p.id === currentProjectId);
+                  const task = project.tasks.find(t => t.id === editingTaskId);
+                  
+                  // Get selected dependency
+                  const dependencyId = document.getElementById('editDependencySelect').value;
+                  const dependencies = dependencyId ? [dependencyId] : [];
+                  
+                  await updateTask(editingTaskId, {
+                      name,
+                      startDate,
+                      endDate,
+                      dependencies
+                  });
 
-                 closeEditTaskModal();
+                  closeEditTaskModal();
              } catch (error) {
                  console.error('Error saving task:', error);
                  alert('Failed to save task changes');
@@ -1910,15 +1943,136 @@
              document.getElementById('timelineDates').textContent = `${startStr} → ${endStr}`;
          }
 
-         function renderGanttWithWindow(windowStart, windowEnd) {
-             // This function would re-render the Gantt chart with a zoomed view
-             // For now, we keep the full view but this enables future zoom functionality
-             // A full implementation would update the xScale domain to [windowStart, windowEnd]
-             // and re-render only the visible portion
-             
-             console.log('Timeline window:', windowStart, 'to', windowEnd);
-             // Could implement focused rendering here
-         }
+          function renderGanttWithWindow(windowStart, windowEnd) {
+              // Re-render the Gantt chart with xScale domain set to the window range
+              // This provides a zoomed view of just the 3-week window
+              
+              const container = document.getElementById('gantt-container');
+              container.innerHTML = '';
+
+              if (!currentProjectId) {
+                  container.innerHTML = '<div class="empty-state"><p>👈 Select a project to view Gantt chart</p></div>';
+                  return;
+              }
+
+              const project = projects.find(p => p.id === currentProjectId);
+              if (!project || project.tasks.length === 0) {
+                  container.innerHTML = '<div class="empty-state"><p>📋 No tasks. Add a task to see the Gantt chart.</p></div>';
+                  return;
+              }
+
+              const tasks = project.tasks;
+              const margin = { top: 20, right: 20, bottom: 30, left: 150 };
+              const width = container.clientWidth - margin.left - margin.right;
+              const height = Math.max(300, tasks.length * 40 + 50);
+
+              // Create SVG with zoomed view for the window range
+              const svg = d3.select(container)
+                  .append('svg')
+                  .attr('width', width + margin.left + margin.right)
+                  .attr('height', height + margin.top + margin.bottom)
+                  .append('g')
+                  .attr('transform', `translate(${margin.left},${margin.top})`);
+
+              // X-scale: zoomed to show only the window date range
+              const xScale = d3.scaleTime()
+                  .domain([windowStart, windowEnd])
+                  .range([0, width]);
+
+              // Y-scale: swimlane for each task
+              const yScale = d3.scaleBand()
+                  .domain(tasks.map(t => t.id))
+                  .range([0, height - margin.bottom])
+                  .paddingInner(0.2)
+                  .paddingOuter(0.1);
+
+              // Draw weekend background blocks
+              const currentDate = new Date(windowStart);
+              while (currentDate < windowEnd) {
+                  if (currentDate.getDay() === 0 || currentDate.getDay() === 6) {
+                      const dayStart = xScale(currentDate);
+                      const nextDay = new Date(currentDate);
+                      nextDay.setDate(nextDay.getDate() + 1);
+                      const dayEnd = xScale(nextDay);
+                      
+                      svg.append('rect')
+                          .attr('x', dayStart)
+                          .attr('y', 0)
+                          .attr('width', dayEnd - dayStart)
+                          .attr('height', height - margin.bottom)
+                          .attr('fill', '#f0f0f0')
+                          .attr('pointer-events', 'none');
+                  }
+                  currentDate.setDate(currentDate.getDate() + 1);
+              }
+
+              // Draw grid lines for each day
+              currentDate = new Date(windowStart);
+              while (currentDate < windowEnd) {
+                  const x = xScale(currentDate);
+                  svg.append('line')
+                      .attr('x1', x)
+                      .attr('y1', 0)
+                      .attr('x2', x)
+                      .attr('y2', height - margin.bottom)
+                      .attr('stroke', '#ddd')
+                      .attr('stroke-width', 1)
+                      .attr('pointer-events', 'none');
+                  currentDate.setDate(currentDate.getDate() + 1);
+              }
+
+              // Draw task bars (only those visible in window)
+              const bars = svg.selectAll('.gantt-bar-group')
+                  .data(tasks)
+                  .enter()
+                  .append('g')
+                  .attr('class', 'gantt-bar-group')
+                  .attr('cursor', 'grab');
+
+              bars.append('rect')
+                  .attr('class', 'gantt-bar')
+                  .attr('x', d => {
+                      const startDate = new Date(d.startDate);
+                      return Math.max(0, xScale(startDate));
+                  })
+                  .attr('y', d => yScale(d.id))
+                  .attr('width', d => {
+                      const startDate = new Date(d.startDate);
+                      const endDate = new Date(d.endDate);
+                      const start = Math.max(windowStart, startDate);
+                      const end = Math.min(windowEnd, endDate);
+                      return Math.max(50, xScale(end) - xScale(start));
+                  })
+                  .attr('height', yScale.bandwidth())
+                  .attr('fill', '#4CAF50')
+                  .attr('pointer-events', 'none');
+
+              // Add task labels
+              bars.append('text')
+                  .attr('class', 'gantt-bar-label')
+                  .attr('x', d => {
+                      const startDate = new Date(d.startDate);
+                      return Math.max(5, xScale(startDate) + 5);
+                  })
+                  .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
+                  .attr('dominant-baseline', 'middle')
+                  .attr('fill', 'white')
+                  .attr('font-size', '12px')
+                  .attr('pointer-events', 'none')
+                  .text(d => d.name);
+
+              // X-axis with dates
+              const xAxis = d3.axisBottom(xScale)
+                  .tickFormat(d3.timeFormat('%m/%d'));
+              svg.append('g')
+                  .attr('transform', `translate(0,${height - margin.bottom})`)
+                  .call(xAxis);
+
+              // Y-axis with task names
+              const yAxis = d3.axisLeft(yScale);
+              svg.append('g')
+                  .call(yAxis);
+          }
 
          async function updateTask(taskId, taskData) {
              try {
