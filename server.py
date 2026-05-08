@@ -142,8 +142,14 @@ class TaskHandler(SimpleHTTPRequestHandler):
         return super().translate_path(path)
 
 if __name__ == '__main__':
-    os.chdir('/var/folders/0j/727fsw6n7b72vdhgshwp50tr0000gn/T/opencode/task-gantt')
-    server = HTTPServer(('127.0.0.1', 5000), TaskHandler)
-    print('Server running at http://127.0.0.1:5000')
+    # Get port from environment variable (Render.com sets this)
+    port = int(os.environ.get('PORT', 5000))
+    host = '0.0.0.0'  # Listen on all interfaces for Render.com
+    
+    # Note: Don't change directory in production
+    # Working directory is already set correctly by the platform
+    
+    server = HTTPServer((host, port), TaskHandler)
+    print(f'Server running at http://{host}:{port}')
     print('Press Ctrl+C to stop')
     server.serve_forever()
