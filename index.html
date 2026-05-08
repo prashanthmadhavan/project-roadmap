@@ -878,9 +878,15 @@
             currentUser = null;
             projects = [];
             currentProjectId = null;
-            showAuthUI();
+            
+            // Clear all UI data
+            document.getElementById('projectsList').innerHTML = '';
+            document.getElementById('tasksList').innerHTML = '';
+            document.getElementById('gantt-container').innerHTML = '';
             document.getElementById('loginUsername').value = '';
             document.getElementById('loginPassword').value = '';
+            
+            showAuthUI();
         }
 
         async function loadProjects() {
