@@ -1,0 +1,4 @@
+# For running locally
+# No external dependencies required - uses Python standard library
+# Optional for development:
+# openpyxl>=3.1.0  # For Excel file generation
