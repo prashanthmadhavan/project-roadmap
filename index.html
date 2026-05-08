@@ -675,6 +675,7 @@
         let currentDependencies = [];
         let draggedBar = null;
         let dragStartX = null;
+        let dragStartY = null;
         
         // Session management (15 minutes = 900 seconds)
         const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
@@ -1114,6 +1115,34 @@
             }).join('');
         }
 
+        // Helper function to count weekdays between two dates
+        function countWeekdays(start, end) {
+            let count = 0;
+            const current = new Date(start);
+            while (current <= end) {
+                const dayOfWeek = current.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0=Sunday, 6=Saturday
+                    count++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            return count;
+        }
+
+        // Helper function to get weekday position (skips weekends)
+        function getWeekdayPosition(date, minDate, totalWeekdays) {
+            let weekdayCount = 0;
+            const current = new Date(minDate);
+            while (current < date) {
+                const dayOfWeek = current.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+                    weekdayCount++;
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            return (weekdayCount / totalWeekdays) * 100; // Return as percentage
+        }
+
         function renderGantt() {
             const container = document.getElementById('gantt-container');
             container.innerHTML = '';
@@ -1133,6 +1162,9 @@
             const dates = tasks.flatMap(t => [new Date(t.startDate), new Date(t.endDate)]);
             const minDate = new Date(Math.min(...dates));
             const maxDate = new Date(Math.max(...dates));
+
+            // Count total weekdays (excluding weekends)
+            const totalWeekdays = countWeekdays(minDate, maxDate);
 
             const margin = { top: 20, right: 20, bottom: 30, left: 150 };
             const width = container.clientWidth - margin.left - margin.right;
@@ -1157,17 +1189,34 @@
                 .attr('points', '0 0, 10 3, 0 6')
                 .attr('fill', '#ff9800');
 
-            const xScale = d3.scaleTime()
-                .domain([minDate, maxDate])
-                .range([0, width]);
+            // Custom scale that shows only weekdays
+            const xScale = (date) => {
+                const weekdayPos = getWeekdayPosition(date, minDate, totalWeekdays);
+                return (weekdayPos / 100) * width;
+            };
 
             const yScale = d3.scaleBand()
                 .domain(tasks.map(t => t.id))
                 .range([0, height - margin.bottom])
                 .padding(0.3);
 
+            // Generate weekday ticks (Mon-Fri only)
+            const weekdayTicks = [];
+            const weeklyTicks = [];
+            let current = new Date(minDate);
+            while (current <= maxDate) {
+                const dayOfWeek = current.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Weekday
+                    weekdayTicks.push(new Date(current));
+                    // Add weekly tick on Mondays
+                    if (dayOfWeek === 1) {
+                        weeklyTicks.push(new Date(current));
+                    }
+                }
+                current.setDate(current.getDate() + 1);
+            }
+            
             // Draw grid lines (weekly)
-            const weeklyTicks = xScale.ticks(d3.timeWeek);
             svg.selectAll('.grid')
                 .data(weeklyTicks)
                 .enter()
@@ -1178,10 +1227,9 @@
                 .attr('y1', 0)
                 .attr('y2', height - margin.bottom);
             
-            // Add light grid lines for days
-            const dayTicks = xScale.ticks(d3.timeDay);
+            // Add light grid lines for weekdays
             svg.selectAll('.grid-day')
-                .data(dayTicks)
+                .data(weekdayTicks)
                 .enter()
                 .append('line')
                 .attr('class', 'gantt-grid-line-light')
@@ -1192,13 +1240,21 @@
                 .attr('stroke', '#f0f0f0')
                 .attr('stroke-width', 1);
 
-            // Draw task bars with drag functionality
+            // Draw task bars with drag functionality (horizontal and vertical)
             const bars = svg.selectAll('.gantt-bar')
                 .data(tasks)
                 .enter()
                 .append('g')
                 .attr('class', 'gantt-bar-group')
-                .attr('cursor', 'move');
+                .attr('cursor', 'grab')
+                .on('mousedown', function(event, d) {
+                    draggedBar = d;
+                    dragStartX = event.clientX;
+                    dragStartY = event.clientY;
+                    d3.select(this).classed('dragging', true);
+                    d3.select(this).attr('cursor', 'grabbing');
+                    event.preventDefault();
+                });
 
             bars.append('rect')
                 .attr('class', 'gantt-bar')
@@ -1206,18 +1262,7 @@
                 .attr('y', d => yScale(d.id))
                 .attr('width', d => Math.max(100, xScale(new Date(d.endDate)) - xScale(new Date(d.startDate))))
                 .attr('height', yScale.bandwidth())
-                .on('mousedown', function(event, d) {
-                    draggedBar = d;
-                    dragStartX = event.clientX;
-                    d3.select(this).classed('dragging', true);
-                    event.preventDefault();
-                })
-                .on('mouseup', function() {
-                    if (draggedBar) {
-                        d3.select(this).classed('dragging', false);
-                        draggedBar = null;
-                    }
-                });
+                .attr('pointer-events', 'none');
 
             // Add task labels on bars
             bars.append('text')
@@ -1266,40 +1311,97 @@
             });
 
             // Draw axes (weekly)
-            const xAxis = d3.axisBottom(xScale)
-                .ticks(d3.timeWeek)
-                .tickFormat(d3.timeFormat('%b %d'));
-            svg.append('g')
+            // Draw custom x-axis with weekday labels
+            const axisG = svg.append('g')
                 .attr('transform', `translate(0,${height - margin.bottom})`)
-                .attr('class', 'gantt-axis')
-                .call(xAxis);
+                .attr('class', 'gantt-axis');
+            
+            // Add tick marks and labels for weekly ticks
+            weeklyTicks.forEach(d => {
+                const x = xScale(d);
+                const label = d3.timeFormat('%b %d')(d);
+                
+                axisG.append('line')
+                    .attr('x1', x)
+                    .attr('x2', x)
+                    .attr('y1', 0)
+                    .attr('y2', 5)
+                    .attr('stroke', 'black');
+                
+                axisG.append('text')
+                    .attr('x', x)
+                    .attr('y', 15)
+                    .attr('text-anchor', 'middle')
+                    .attr('font-size', '12px')
+                    .text(label);
+            });
 
-            // Handle dragging
+            // Handle dragging (horizontal and vertical)
+            let dragMode = null; // 'horizontal' for date drag, 'vertical' for swimlane drag
+            
             document.addEventListener('mousemove', (event) => {
                 if (!draggedBar || !dragStartX) return;
 
                 const deltaX = event.clientX - dragStartX;
-                const dayWidth = width / (maxDate - minDate) * 1000 * 60 * 60 * 24;
-                const daysShifted = Math.round(deltaX / dayWidth);
-
-                if (daysShifted === 0) return;
-
-                const startDate = new Date(draggedBar.startDate);
-                const endDate = new Date(draggedBar.endDate);
+                const deltaY = event.clientY - dragStartY;
                 
-                startDate.setDate(startDate.getDate() + daysShifted);
-                endDate.setDate(endDate.getDate() + daysShifted);
-
-                draggedBar.startDate = startDate.toISOString().split('T')[0];
-                draggedBar.endDate = endDate.toISOString().split('T')[0];
+                // Determine drag mode based on initial movement
+                if (!dragMode) {
+                    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 5) {
+                        dragMode = 'horizontal';
+                    } else if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 5) {
+                        dragMode = 'vertical';
+                    }
+                }
                 
-                dragStartX = event.clientX;
-                updateTask(draggedBar.id, draggedBar);
+                if (dragMode === 'horizontal') {
+                    // Horizontal drag: shift task dates
+                    const dayWidth = width / (maxDate - minDate) * 1000 * 60 * 60 * 24;
+                    const daysShifted = Math.round(deltaX / dayWidth);
+
+                    if (daysShifted === 0) return;
+
+                    const startDate = new Date(draggedBar.startDate);
+                    const endDate = new Date(draggedBar.endDate);
+                    
+                    startDate.setDate(startDate.getDate() + daysShifted);
+                    endDate.setDate(endDate.getDate() + daysShifted);
+
+                    draggedBar.startDate = startDate.toISOString().split('T')[0];
+                    draggedBar.endDate = endDate.toISOString().split('T')[0];
+                    
+                    dragStartX = event.clientX;
+                    updateTask(draggedBar.id, draggedBar);
+                } else if (dragMode === 'vertical') {
+                    // Vertical drag: reorder tasks (swimlane drag)
+                    const taskHeight = yScale.bandwidth() + yScale.padding() * yScale.bandwidth();
+                    const newIndex = Math.round(deltaY / taskHeight);
+                    
+                    // Find current index
+                    const currentIndex = tasks.findIndex(t => t.id === draggedBar.id);
+                    const targetIndex = currentIndex + newIndex;
+                    
+                    // Reorder tasks array if within bounds
+                    if (targetIndex >= 0 && targetIndex < tasks.length && newIndex !== 0) {
+                        const [movedTask] = tasks.splice(currentIndex, 1);
+                        tasks.splice(targetIndex, 0, movedTask);
+                        
+                        // Re-render with new order
+                        renderGantt();
+                        dragStartY = event.clientY;
+                    }
+                }
             });
 
             document.addEventListener('mouseup', () => {
+                if (draggedBar) {
+                    svg.selectAll('.gantt-bar-group').classed('dragging', false);
+                    svg.selectAll('.gantt-bar-group').attr('cursor', 'grab');
+                }
                 draggedBar = null;
                 dragStartX = null;
+                dragStartY = null;
+                dragMode = null;
             });
         }
 
