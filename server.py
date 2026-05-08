@@ -1313,9 +1313,56 @@ def init_database():
             cursor.close()
             conn.close()
 
+def verify_database_integrity():
+    """Verify database has expected users and structure"""
+    try:
+        if USE_POSTGRES:
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            
+            # Check demo user exists
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
+            demo_count = cursor.fetchone()[0]
+            
+            # Check users table has data
+            cursor.execute('SELECT COUNT(*) FROM users')
+            total_users = cursor.fetchone()[0]
+            
+            # Check projects table
+            cursor.execute('SELECT COUNT(*) FROM projects')
+            total_projects = cursor.fetchone()[0]
+            
+            cursor.close()
+            conn.close()
+            
+            print(f"✓ Database integrity: {total_users} users, {total_projects} projects")
+            if demo_count == 0:
+                print("⚠ WARNING: demo user not found - database may have been reset!")
+        else:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
+            demo_count = cursor.fetchone()[0]
+            
+            cursor.execute('SELECT COUNT(*) FROM users')
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute('SELECT COUNT(*) FROM projects')
+            total_projects = cursor.fetchone()[0]
+            
+            conn.close()
+            
+            print(f"✓ Database integrity: {total_users} users, {total_projects} projects")
+    except Exception as e:
+        print(f"⚠ Database integrity check failed: {e}")
+
 if __name__ == '__main__':
     # Initialize database on startup
     init_database()
+    
+    # Verify database integrity after initialization
+    verify_database_integrity()
     
     port = int(os.environ.get('PORT', 5000))
     host = '0.0.0.0'
