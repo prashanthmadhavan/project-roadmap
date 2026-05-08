@@ -1033,10 +1033,10 @@
         });
 
         async function checkAuth() {
-             try {
-                 const response = await apiCall('/api/auth/me', {
-                     headers: { 'Authorization': `Bearer ${authToken}` }
-                 });
+            try {
+                const response = await apiCall('/api/auth/me', {
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
                 if (response.ok) {
                     const data = await response.json();
                     currentUser = data.username;
@@ -1146,12 +1146,12 @@
                 return;
             }
 
-             try {
-                 const response = await apiCall('/api/auth/register', {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({ username, password })
-                 });
+            try {
+                const response = await apiCall('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
 
                 const data = await response.json();
 
