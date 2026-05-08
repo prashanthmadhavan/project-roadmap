@@ -647,10 +647,7 @@
                         <select id="dependencySelect">
                             <option value="">No dependency</option>
                         </select>
-                        <button onclick="addDependency()" style="margin-top: 8px;">Add Dependency</button>
                     </div>
-
-                    <div id="dependenciesList" class="dependencies-list"></div>
 
                     <button onclick="addTask()">Add Task</button>
 
@@ -1022,11 +1019,15 @@
             const name = document.getElementById('taskName').value.trim();
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
+            const dependencyId = document.getElementById('dependencySelect').value;
 
             if (!name || !startDate || !endDate) {
                 alert('Please fill in all fields');
                 return;
             }
+
+            // Auto-add dependency if one is selected
+            const dependencies = dependencyId ? [dependencyId] : [];
 
             try {
                 const response = await fetch(`/api/projects/${currentProjectId}/tasks`, {
@@ -1039,7 +1040,7 @@
                         name,
                         startDate,
                         endDate,
-                        dependencies: currentDependencies
+                        dependencies
                     })
                 });
 
@@ -1047,8 +1048,7 @@
                     document.getElementById('taskName').value = '';
                     document.getElementById('startDate').value = '';
                     document.getElementById('endDate').value = '';
-                    currentDependencies = [];
-                    document.getElementById('dependenciesList').innerHTML = '';
+                    document.getElementById('dependencySelect').value = '';
                     loadProjects();
                     selectProject(currentProjectId);
                 }

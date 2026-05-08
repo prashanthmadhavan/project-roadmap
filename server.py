@@ -258,6 +258,24 @@ class AuthHandler(SimpleHTTPRequestHandler):
         self.sessions[token] = (username, time.time())
         return True
 
+    def normalize_task(self, task):
+        """Convert snake_case database fields to camelCase for API response"""
+        normalized = {
+            'id': task.get('id'),
+            'projectId': task.get('project_id'),
+            'name': task.get('name'),
+            'startDate': task.get('start_date'),
+            'endDate': task.get('end_date'),
+            'dependencies': task.get('dependencies', [])
+        }
+        # Parse dependencies if it's a JSON string
+        if isinstance(normalized['dependencies'], str):
+            try:
+                normalized['dependencies'] = json.loads(normalized['dependencies'])
+            except:
+                normalized['dependencies'] = []
+        return normalized
+
     def load_projects(self):
         """Load all projects from database"""
         try:
@@ -272,13 +290,8 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 for project in projects:
                     cursor.execute('SELECT * FROM tasks WHERE project_id = %s', (project['id'],))
                     tasks = cursor.fetchall()
-                    project['tasks'] = [dict(t) for t in tasks]
-                    # Convert dependencies from JSON string to list
-                    for task in project['tasks']:
-                        if task.get('dependencies'):
-                            task['dependencies'] = json.loads(task['dependencies'])
-                        else:
-                            task['dependencies'] = []
+                    # Normalize task fields to camelCase
+                    project['tasks'] = [self.normalize_task(dict(t)) for t in tasks]
                 
                 cursor.close()
                 conn.close()
@@ -296,13 +309,8 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 for project in projects:
                     cursor.execute('SELECT * FROM tasks WHERE project_id = ?', (project['id'],))
                     tasks = [dict(t) for t in cursor.fetchall()]
-                    project['tasks'] = tasks
-                    # Convert dependencies from JSON string to list
-                    for task in project['tasks']:
-                        if task.get('dependencies'):
-                            task['dependencies'] = json.loads(task['dependencies'])
-                        else:
-                            task['dependencies'] = []
+                    # Normalize task fields to camelCase
+                    project['tasks'] = [self.normalize_task(t) for t in tasks]
                 
                 conn.close()
                 return projects
@@ -795,17 +803,11 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     cursor.execute('SELECT * FROM tasks WHERE id = %s', (task_id,))
                     updated_task = cursor.fetchone()
                     
-                    updated_task_dict = dict(updated_task)
-                    # Convert dependencies from JSON string to list
-                    if updated_task_dict.get('dependencies'):
-                        updated_task_dict['dependencies'] = json.loads(updated_task_dict['dependencies'])
-                    else:
-                        updated_task_dict['dependencies'] = []
-                    
                     cursor.close()
                     conn.close()
                     
-                    self.send_json(200, updated_task_dict)
+                    # Normalize and return
+                    self.send_json(200, self.normalize_task(dict(updated_task)))
                 else:
                     conn = sqlite3.connect(DB_FILE)
                     conn.row_factory = sqlite3.Row
@@ -844,17 +846,11 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     cursor.execute('SELECT * FROM tasks WHERE id = ?', (task_id,))
                     updated_task = cursor.fetchone()
                     
-                    updated_task_dict = dict(updated_task)
-                    # Convert dependencies from JSON string to list
-                    if updated_task_dict.get('dependencies'):
-                        updated_task_dict['dependencies'] = json.loads(updated_task_dict['dependencies'])
-                    else:
-                        updated_task_dict['dependencies'] = []
-                    
                     cursor.close()
                     conn.close()
                     
-                    self.send_json(200, updated_task_dict)
+                    # Normalize and return
+                    self.send_json(200, self.normalize_task(dict(updated_task)))
             except Exception as e:
                 self.send_json(400, {'error': str(e)})
 
