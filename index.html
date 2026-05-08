@@ -71,7 +71,9 @@
         }
 
         input[type="text"],
-        input[type="password"] {
+        input[type="password"],
+        input[type="date"],
+        select {
             width: 100%;
             padding: 12px;
             border: 1px solid #ddd;
@@ -82,7 +84,9 @@
         }
 
         input[type="text"]:focus,
-        input[type="password"]:focus {
+        input[type="password"]:focus,
+        input[type="date"]:focus,
+        select:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
@@ -173,21 +177,6 @@
             display: block;
         }
 
-        .success-message {
-            background: #e8f5e9;
-            border-left: 4px solid #4CAF50;
-            color: #2e7d32;
-            padding: 12px;
-            border-radius: 4px;
-            font-size: 13px;
-            margin-bottom: 20px;
-            display: none;
-        }
-
-        .success-message.show {
-            display: block;
-        }
-
         /* Main App */
         .app-container {
             display: none;
@@ -239,7 +228,7 @@
 
         .main-layout {
             display: grid;
-            grid-template-columns: 300px 1fr;
+            grid-template-columns: 320px 1fr;
             gap: 20px;
             height: calc(100vh - 200px);
         }
@@ -370,10 +359,48 @@
             color: #333;
         }
 
+        .dependencies-list {
+            background: #f9f9f9;
+            border: 1px solid #eee;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 120px;
+            overflow-y: auto;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+
+        .dependency-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 5px;
+            background: white;
+            margin-bottom: 5px;
+            border-radius: 3px;
+            border: 1px solid #ddd;
+        }
+
+        .dependency-item button {
+            background: #f44336;
+            color: white;
+            border: none;
+            padding: 2px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 11px;
+            width: auto;
+        }
+
+        .dependency-item button:hover {
+            background: #d32f2f;
+        }
+
         #gantt-container {
             flex: 1;
             overflow: auto;
             position: relative;
+            background: white;
         }
 
         svg {
@@ -385,10 +412,19 @@
             fill: #667eea;
             stroke: #5568d3;
             stroke-width: 1;
+            cursor: move;
         }
 
         .gantt-bar:hover {
             fill: #5568d3;
+            opacity: 0.9;
+        }
+
+        .gantt-bar-label {
+            font-size: 11px;
+            fill: white;
+            pointer-events: none;
+            font-weight: 500;
         }
 
         .gantt-text {
@@ -457,6 +493,10 @@
             background: #0b7dda;
         }
 
+        .dragging {
+            opacity: 0.7;
+        }
+
         @media (max-width: 768px) {
             .main-layout {
                 grid-template-columns: 1fr;
@@ -501,7 +541,6 @@
             </div>
 
             <div class="error-message" id="registerError"></div>
-            <div class="success-message" id="registerSuccess"></div>
 
             <div class="form-group">
                 <label>Username</label>
@@ -597,9 +636,19 @@
                         <input type="date" id="endDate">
                     </div>
 
-                    <button onclick="addTask()" style="margin-top: 20px;">Add Task</button>
+                    <div class="form-group">
+                        <label>Depends On (optional)</label>
+                        <select id="dependencySelect">
+                            <option value="">No dependency</option>
+                        </select>
+                        <button onclick="addDependency()" style="margin-top: 8px;">Add Dependency</button>
+                    </div>
 
-                    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
+                    <div id="dependenciesList" class="dependencies-list"></div>
+
+                    <button onclick="addTask()">Add Task</button>
+
+                    <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px; flex: 1; overflow-y: auto;">
                         <h2 style="margin-bottom: 10px;">Tasks</h2>
                         <div id="tasksList"></div>
                     </div>
@@ -620,6 +669,9 @@
         let currentProjectId = null;
         let projects = [];
         let currentUser = null;
+        let currentDependencies = [];
+        let draggedBar = null;
+        let dragStartX = null;
 
         // Check if already logged in
         window.addEventListener('load', async () => {
@@ -731,10 +783,8 @@
             const username = document.getElementById('registerUsername').value.trim();
             const password = document.getElementById('registerPassword').value;
             const errorDiv = document.getElementById('registerError');
-            const successDiv = document.getElementById('registerSuccess');
 
             errorDiv.classList.remove('show');
-            successDiv.classList.remove('show');
 
             if (!username || !password) {
                 errorDiv.textContent = 'Please enter username and password';
@@ -756,9 +806,6 @@
                     errorDiv.classList.add('show');
                     return;
                 }
-
-                successDiv.textContent = data.message + ' Logging you in...';
-                successDiv.classList.add('show');
 
                 authToken = data.token;
                 localStorage.setItem('authToken', authToken);
@@ -831,6 +878,8 @@
 
         function selectProject(projectId) {
             currentProjectId = projectId;
+            currentDependencies = [];
+            
             const project = projects.find(p => p.id === projectId);
             
             if (project) {
@@ -845,8 +894,69 @@
             }
 
             renderProjectsList();
+            renderDependencySelect();
             renderTasks();
             renderGantt();
+        }
+
+        function renderDependencySelect() {
+            const select = document.getElementById('dependencySelect');
+            const project = projects.find(p => p.id === currentProjectId);
+            
+            if (!project) return;
+            
+            select.innerHTML = '<option value="">No dependency</option>';
+            project.tasks.forEach(task => {
+                const option = document.createElement('option');
+                option.value = task.id;
+                option.textContent = task.name;
+                select.appendChild(option);
+            });
+        }
+
+        function addDependency() {
+            const select = document.getElementById('dependencySelect');
+            const taskId = select.value;
+            
+            if (!taskId) {
+                alert('Please select a task');
+                return;
+            }
+
+            if (currentDependencies.includes(taskId)) {
+                alert('This dependency is already added');
+                return;
+            }
+
+            const project = projects.find(p => p.id === currentProjectId);
+            const task = project.tasks.find(t => t.id === taskId);
+            
+            if (task) {
+                currentDependencies.push(taskId);
+                updateDependenciesDisplay();
+            }
+        }
+
+        function removeDependency(taskId) {
+            currentDependencies = currentDependencies.filter(id => id !== taskId);
+            updateDependenciesDisplay();
+        }
+
+        function updateDependenciesDisplay() {
+            const project = projects.find(p => p.id === currentProjectId);
+            const container = document.getElementById('dependenciesList');
+            
+            if (!project) return;
+            
+            container.innerHTML = currentDependencies.map(depId => {
+                const depTask = project.tasks.find(t => t.id === depId);
+                return `
+                    <div class="dependency-item">
+                        <span>${depTask ? depTask.name : 'Unknown'}</span>
+                        <button onclick="removeDependency('${depId}')">Remove</button>
+                    </div>
+                `;
+            }).join('');
         }
 
         async function addTask() {
@@ -875,7 +985,7 @@
                         name,
                         startDate,
                         endDate,
-                        dependencies: []
+                        dependencies: currentDependencies
                     })
                 });
 
@@ -883,6 +993,8 @@
                     document.getElementById('taskName').value = '';
                     document.getElementById('startDate').value = '';
                     document.getElementById('endDate').value = '';
+                    currentDependencies = [];
+                    document.getElementById('dependenciesList').innerHTML = '';
                     loadProjects();
                     selectProject(currentProjectId);
                 }
@@ -973,6 +1085,7 @@
                 .append('g')
                 .attr('transform', `translate(${margin.left},${margin.top})`);
 
+            // Add arrow marker for dependencies
             svg.append('defs').append('marker')
                 .attr('id', 'arrowhead')
                 .attr('markerWidth', 10)
@@ -993,6 +1106,7 @@
                 .range([0, height - margin.bottom])
                 .padding(0.3);
 
+            // Draw grid lines
             svg.selectAll('.grid')
                 .data(xScale.ticks(d3.timeDay))
                 .enter()
@@ -1003,16 +1117,50 @@
                 .attr('y1', 0)
                 .attr('y2', height - margin.bottom);
 
-            svg.selectAll('.gantt-bar')
+            // Draw task bars with drag functionality
+            const bars = svg.selectAll('.gantt-bar')
                 .data(tasks)
                 .enter()
-                .append('rect')
+                .append('g')
+                .attr('class', 'gantt-bar-group')
+                .attr('cursor', 'move');
+
+            bars.append('rect')
                 .attr('class', 'gantt-bar')
                 .attr('x', d => xScale(new Date(d.startDate)))
                 .attr('y', d => yScale(d.id))
-                .attr('width', d => xScale(new Date(d.endDate)) - xScale(new Date(d.startDate)))
-                .attr('height', yScale.bandwidth());
+                .attr('width', d => Math.max(100, xScale(new Date(d.endDate)) - xScale(new Date(d.startDate))))
+                .attr('height', yScale.bandwidth())
+                .on('mousedown', function(event, d) {
+                    draggedBar = d;
+                    dragStartX = event.clientX;
+                    d3.select(this).classed('dragging', true);
+                    event.preventDefault();
+                })
+                .on('mouseup', function() {
+                    if (draggedBar) {
+                        d3.select(this).classed('dragging', false);
+                        draggedBar = null;
+                    }
+                });
 
+            // Add task labels on bars
+            bars.append('text')
+                .attr('class', 'gantt-bar-label')
+                .attr('x', d => xScale(new Date(d.startDate)) + 5)
+                .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
+                .attr('dominant-baseline', 'middle')
+                .text(d => {
+                    const width = xScale(new Date(d.endDate)) - xScale(new Date(d.startDate));
+                    if (width > 80) {
+                        return d.name.length > 15 ? d.name.substring(0, 12) + '...' : d.name;
+                    } else if (width > 40) {
+                        return d.name.substring(0, 3).toUpperCase();
+                    }
+                    return '';
+                });
+
+            // Draw task names on left
             svg.selectAll('.gantt-text')
                 .data(tasks)
                 .enter()
@@ -1022,13 +1170,82 @@
                 .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
                 .attr('text-anchor', 'end')
                 .attr('dominant-baseline', 'middle')
-                .text(d => d.name);
+                .text(d => d.name.length > 18 ? d.name.substring(0, 15) + '...' : d.name);
 
+            // Draw dependency arrows
+            tasks.forEach(task => {
+                task.dependencies.forEach(depId => {
+                    const depTask = tasks.find(t => t.id === depId);
+                    if (depTask) {
+                        const x1 = xScale(new Date(depTask.endDate));
+                        const y1 = yScale(depId) + yScale.bandwidth() / 2;
+                        const x2 = xScale(new Date(task.startDate));
+                        const y2 = yScale(task.id) + yScale.bandwidth() / 2;
+
+                        const midX = (x1 + x2) / 2;
+                        svg.append('path')
+                            .attr('class', 'dependency-line')
+                            .attr('d', `M ${x1} ${y1} C ${midX} ${y1} ${midX} ${y2} ${x2} ${y2}`);
+                    }
+                });
+            });
+
+            // Draw axes
             const xAxis = d3.axisBottom(xScale).ticks(d3.timeDay);
             svg.append('g')
                 .attr('transform', `translate(0,${height - margin.bottom})`)
                 .attr('class', 'gantt-axis')
                 .call(xAxis);
+
+            // Handle dragging
+            document.addEventListener('mousemove', (event) => {
+                if (!draggedBar || !dragStartX) return;
+
+                const deltaX = event.clientX - dragStartX;
+                const dayWidth = width / (maxDate - minDate) * 1000 * 60 * 60 * 24;
+                const daysShifted = Math.round(deltaX / dayWidth);
+
+                if (daysShifted === 0) return;
+
+                const startDate = new Date(draggedBar.startDate);
+                const endDate = new Date(draggedBar.endDate);
+                
+                startDate.setDate(startDate.getDate() + daysShifted);
+                endDate.setDate(endDate.getDate() + daysShifted);
+
+                draggedBar.startDate = startDate.toISOString().split('T')[0];
+                draggedBar.endDate = endDate.toISOString().split('T')[0];
+                
+                dragStartX = event.clientX;
+                updateTask(draggedBar.id, draggedBar);
+            });
+
+            document.addEventListener('mouseup', () => {
+                draggedBar = null;
+                dragStartX = null;
+            });
+        }
+
+        async function updateTask(taskId, taskData) {
+            try {
+                await fetch(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authToken}`
+                    },
+                    body: JSON.stringify({
+                        name: taskData.name,
+                        startDate: taskData.startDate,
+                        endDate: taskData.endDate,
+                        dependencies: taskData.dependencies
+                    })
+                });
+                renderGantt();
+                renderTasks();
+            } catch (error) {
+                console.error('Error updating task:', error);
+            }
         }
 
         function switchProjectTab(tab) {
