@@ -80,7 +80,6 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     id INTEGER PRIMARY KEY,
                     username TEXT UNIQUE NOT NULL,
                     password TEXT NOT NULL,
-                    advanced_mode INTEGER DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
@@ -413,52 +412,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
             return self.sessions[token][0]
         return None
      
-    def get_user_advanced_mode(self, username):
-        """Get user's advanced_mode setting from database"""
-        try:
-            if USE_POSTGRES:
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('SELECT advanced_mode FROM users WHERE username = %s', (username,))
-                result = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                return result[0] if result else False
-            else:
-                conn = sqlite3.connect(DB_PATH)
-                cursor = conn.cursor()
-                cursor.execute('SELECT advanced_mode FROM users WHERE username = ?', (username,))
-                result = cursor.fetchone()
-                cursor.close()
-                conn.close()
-                return bool(result[0]) if result else False
-        except Exception:
-            return False
-     
-    def set_user_advanced_mode(self, username, advanced_mode):
-        """Set user's advanced_mode setting"""
-        try:
-            if USE_POSTGRES:
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute('UPDATE users SET advanced_mode = %s WHERE username = %s', 
-                                (advanced_mode, username))
-                conn.commit()
-                cursor.close()
-                conn.close()
-            else:
-                conn = sqlite3.connect(DB_PATH)
-                cursor = conn.cursor()
-                cursor.execute('UPDATE users SET advanced_mode = ? WHERE username = ?', 
-                                (1 if advanced_mode else 0, username))
-                conn.commit()
-                cursor.close()
-                conn.close()
-            return True
-        except Exception:
-            return False
-
-    def send_json(self, status_code, data):
+     def send_json(self, status_code, data):
         """Send JSON response with CORS headers restricted to allowed origins"""
         self.send_response(status_code)
         self.send_header('Content-type', 'application/json')
@@ -475,14 +429,13 @@ class AuthHandler(SimpleHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path_parts = parsed_path.path.split('/')
         
-        # GET /api/auth/me - Get current user with advanced_mode flag
-        if parsed_path.path == '/api/auth/me':
-            username = self.get_current_user()
-            if username:
-                advanced_mode = self.get_user_advanced_mode(username)
-                self.send_json(200, {'username': username, 'advanced_mode': advanced_mode})
-            else:
-                self.send_json(401, {'error': 'Not authenticated'})
+         # GET /api/auth/me - Get current user
+         if parsed_path.path == '/api/auth/me':
+             username = self.get_current_user()
+             if username:
+                 self.send_json(200, {'username': username})
+             else:
+                 self.send_json(401, {'error': 'Not authenticated'})
         
         # GET /api/projects - Get user's projects
         elif parsed_path.path == '/api/projects':
@@ -643,29 +596,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
             self.send_json(200, {'message': 'Logged out successfully'})
          
         # POST /api/auth/toggle-advanced - Toggle advanced mode
-        elif parsed_path.path == '/api/auth/toggle-advanced':
-            username = self.get_current_user()
-            if not username:
-                self.send_json(401, {'error': 'Not authenticated'})
-                return
-             
-            try:
-                data = json.loads(body)
-                advanced_mode = data.get('advanced_mode', None)
-                 
-                if advanced_mode is None:
-                    self.send_json(400, {'error': 'advanced_mode field is required'})
-                    return
-                 
-                success = self.set_user_advanced_mode(username, advanced_mode)
-                if success:
-                    self.send_json(200, {'message': 'Advanced mode updated', 'advanced_mode': advanced_mode})
-                else:
-                    self.send_json(500, {'error': 'Failed to update advanced mode'})
-            except json.JSONDecodeError:
-                self.send_json(400, {'error': 'Invalid JSON'})
-         
-        # POST /api/projects - Create new project
+         # POST /api/projects - Create new project
         elif parsed_path.path == '/api/projects':
             username = self.get_current_user()
             if not username:
@@ -1171,10 +1102,10 @@ def init_database():
                      # Create demo user with proper hashing
                      demo_password = AuthHandler.hash_password(None, 'Demo@1234')
                      
-                     cursor.execute(
-                         'INSERT INTO users (username, password, advanced_mode) VALUES (%s, %s, %s)',
-                         ('demo', demo_password, False)
-                     )
+                      cursor.execute(
+                          'INSERT INTO users (username, password) VALUES (%s, %s)',
+                          ('demo', demo_password)
+                      )
                      print("  ✓ Demo user created")
                      
                      # Create demo project
@@ -1219,16 +1150,15 @@ def init_database():
         cursor = conn.cursor()
         
         try:
-            # Create users table
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY,
-                    username TEXT UNIQUE NOT NULL,
-                    password TEXT NOT NULL,
-                    advanced_mode INTEGER DEFAULT 0,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
+             # Create users table
+             cursor.execute('''
+                 CREATE TABLE IF NOT EXISTS users (
+                     id SERIAL PRIMARY KEY,
+                     username VARCHAR(255) UNIQUE NOT NULL,
+                     password VARCHAR(255) NOT NULL,
+                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                 )
+             ''')
             
             # Create projects table
             cursor.execute('''
@@ -1266,10 +1196,10 @@ def init_database():
                      handler = AuthHandler(None, None, None)
                      demo_password = handler.hash_password('Demo@1234')
                      
-                     cursor.execute(
-                         'INSERT INTO users (username, password, advanced_mode) VALUES (?, ?, ?)',
-                         ('demo', demo_password, 0)
-                     )
+                      cursor.execute(
+                          'INSERT INTO users (username, password) VALUES (?, ?)',
+                          ('demo', demo_password)
+                      )
                      print("  ✓ Demo user created")
                      
                      # Create demo project
