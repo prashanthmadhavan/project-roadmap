@@ -1002,19 +1002,25 @@
         }
 
         async function loadProjects() {
-            try {
-                const response = await fetch('/api/projects', {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                });
-                projects = await response.json() || [];
-                renderProjectsList();
-                if (projects.length > 0 && !currentProjectId) {
-                    selectProject(projects[0].id);
-                }
-            } catch (error) {
-                console.error('Error loading projects:', error);
-            }
-        }
+             try {
+                 const response = await fetch('/api/projects', {
+                     headers: { 'Authorization': `Bearer ${authToken}` }
+                 });
+                 
+                 if (!response.ok) {
+                     throw new Error(`Server error: ${response.status}`);
+                 }
+                 
+                 projects = await response.json() || [];
+                 renderProjectsList();
+                 if (projects.length > 0 && !currentProjectId) {
+                     selectProject(projects[0].id);
+                 }
+             } catch (error) {
+                 console.error('Error loading projects:', error);
+                 alert('Failed to load projects. Please check your connection and refresh.');
+             }
+         }
 
         async function addProject() {
             const name = document.getElementById('projectName').value.trim();
@@ -1111,22 +1117,33 @@
             updateDependenciesDisplay();
         }
 
-        function updateDependenciesDisplay() {
-            const project = projects.find(p => p.id === currentProjectId);
-            const container = document.getElementById('dependenciesList');
-            
-            if (!project) return;
-            
-            container.innerHTML = currentDependencies.map(depId => {
-                const depTask = project.tasks.find(t => t.id === depId);
-                return `
-                    <div class="dependency-item">
-                        <span>${depTask ? depTask.name : 'Unknown'}</span>
-                        <button onclick="removeDependency('${depId}')">Remove</button>
-                    </div>
-                `;
-            }).join('');
-        }
+         function updateDependenciesDisplay() {
+             const project = projects.find(p => p.id === currentProjectId);
+             const container = document.getElementById('dependenciesList');
+             
+             if (!project || !container) return;
+             
+             container.innerHTML = currentDependencies.map(depId => {
+                 const depTask = project.tasks.find(t => t.id === depId);
+                 return `
+                     <div class="dependency-item" data-dep-id="${escapeHtml(depId)}">
+                         <span>${depTask ? escapeHtml(depTask.name) : 'Unknown'}</span>
+                         <button data-action="remove-dependency">Remove</button>
+                     </div>
+                 `;
+             }).join('');
+             
+             // Add event delegation for remove dependency buttons
+             container.addEventListener('click', (e) => {
+                 if (e.target.getAttribute('data-action') === 'remove-dependency') {
+                     const depItem = e.target.closest('[data-dep-id]');
+                     if (depItem) {
+                         const depId = depItem.dataset.depId;
+                         removeDependency(depId);
+                     }
+                 }
+             });
+         }
 
         async function addTask() {
              if (!currentProjectId) {
@@ -1177,16 +1194,20 @@
                 });
 
                 if (response.ok) {
-                    document.getElementById('taskName').value = '';
-                    document.getElementById('startDate').value = '';
-                    document.getElementById('endDate').value = '';
-                    document.getElementById('dependencySelect').value = '';
-                    loadProjects();
-                    selectProject(currentProjectId);
-                }
-            } catch (error) {
-                console.error('Error adding task:', error);
-            }
+                     document.getElementById('taskName').value = '';
+                     document.getElementById('startDate').value = '';
+                     document.getElementById('endDate').value = '';
+                     document.getElementById('dependencySelect').value = '';
+                     loadProjects();
+                     selectProject(currentProjectId);
+                 } else {
+                     const error = await response.json();
+                     alert(`Failed to add task: ${error.error || 'Unknown error'}`);
+                 }
+             } catch (error) {
+                 console.error('Error adding task:', error);
+                 alert('Error adding task. Please try again.');
+             }
         }
 
         async function deleteTask(taskId) {
@@ -1261,18 +1282,20 @@
          }
 
         // Helper function to count weekdays between two dates
-        function countWeekdays(start, end) {
-            let count = 0;
-            const current = new Date(start);
-            while (current <= end) {
-                const dayOfWeek = current.getDay();
-                if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0=Sunday, 6=Saturday
-                    count++;
-                }
-                current.setDate(current.getDate() + 1);
-            }
-            return count;
-        }
+         function countWeekdays(start, end) {
+             let count = 0;
+             const current = new Date(start);
+             // Note: Use < instead of <= to exclude end date (standard date range convention)
+             // This ensures tasks from Mon-Mon = 1 weekday (just Monday), not 2
+             while (current < end) {
+                 const dayOfWeek = current.getDay();
+                 if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0=Sunday, 6=Saturday
+                     count++;
+                 }
+                 current.setDate(current.getDate() + 1);
+             }
+             return count;
+         }
 
         // Helper function to get weekday position (skips weekends)
         function getWeekdayPosition(date, minDate, totalWeekdays) {

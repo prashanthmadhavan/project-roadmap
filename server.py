@@ -595,44 +595,61 @@ class AuthHandler(SimpleHTTPRequestHandler):
             self.send_json(200, {'message': 'Logged out successfully'})
         
         # POST /api/projects - Create new project
-        elif parsed_path.path == '/api/projects':
-            username = self.get_current_user()
-            if not username:
-                self.send_json(401, {'error': 'Not authenticated'})
-                return
-            
-            try:
-                data = json.loads(body)
-                project_id = str(int(time.time() * 1000))
-                
-                if USE_POSTGRES:
-                    conn = self.get_db_connection()
-                    cursor = conn.cursor()
-                    
-                    cursor.execute(
-                        'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
-                        (project_id, username, data.get('name'), data.get('description', ''))
-                    )
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-                else:
-                    conn = sqlite3.connect(DB_FILE)
-                    cursor = conn.cursor()
-                    
-                    cursor.execute(
-                        'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
-                        (project_id, username, data.get('name'), data.get('description', ''))
-                    )
-                    conn.commit()
-                    cursor.close()
-                    conn.close()
-                
-                new_project = {
-                    'id': project_id,
-                    'owner': username,
-                    'name': data.get('name'),
-                    'description': data.get('description', ''),
+         elif parsed_path.path == '/api/projects':
+             username = self.get_current_user()
+             if not username:
+                 self.send_json(401, {'error': 'Not authenticated'})
+                 return
+             
+             try:
+                 data = json.loads(body)
+                 
+                 # Validate project input
+                 name = data.get('name', '').strip()
+                 description = data.get('description', '').strip()
+                 
+                 if not name:
+                     self.send_json(400, {'error': 'Project name is required'})
+                     return
+                 
+                 if len(name) > 255:
+                     self.send_json(400, {'error': 'Project name is too long (max 255 characters)'})
+                     return
+                 
+                 if len(description) > 1000:
+                     self.send_json(400, {'error': 'Description is too long (max 1000 characters)'})
+                     return
+                 
+                 project_id = str(int(time.time() * 1000))
+                 
+                 if USE_POSTGRES:
+                     conn = self.get_db_connection()
+                     cursor = conn.cursor()
+                     
+                     cursor.execute(
+                         'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                         (project_id, username, name, description)
+                     )
+                     conn.commit()
+                     cursor.close()
+                     conn.close()
+                 else:
+                     conn = sqlite3.connect(DB_FILE)
+                     cursor = conn.cursor()
+                     
+                     cursor.execute(
+                         'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
+                         (project_id, username, name, description)
+                     )
+                     conn.commit()
+                     cursor.close()
+                     conn.close()
+                 
+                 new_project = {
+                     'id': project_id,
+                     'owner': username,
+                     'name': name,
+                     'description': description,
                     'created_at': time.strftime('%Y-%m-%d'),
                     'tasks': []
                 }
