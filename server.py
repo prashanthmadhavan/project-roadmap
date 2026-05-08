@@ -1415,7 +1415,8 @@ def verify_database_integrity():
             print(f"✓ Database integrity: {total_users} users, {total_projects} projects")
             if demo_count == 0:
                 print("⚠ WARNING: demo user not found - database may have been reset! Attempting recovery...")
-                recreate_critical_users()
+            # Always check and recreate critical users if missing
+            recreate_critical_users()
         else:
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
@@ -1432,6 +1433,8 @@ def verify_database_integrity():
             conn.close()
             
             print(f"✓ Database integrity: {total_users} users, {total_projects} projects")
+            # Always check and recreate critical users if missing
+            recreate_critical_users()
     except Exception as e:
         print(f"⚠ Database integrity check failed: {e}")
 
