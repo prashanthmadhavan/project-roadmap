@@ -1020,20 +1020,19 @@
                     return;
                 }
 
-                 authToken = data.token;
-                 localStorage.setItem('authToken', authToken);
-                 currentUser = data.username;
-                 
-                 // Clear old data before loading new user's projects
-                 projects = [];
-                 currentProjectId = null;
-                 
-                 // Fetch user's advanced mode setting
-                 try {
-                  showAppUI();
-                  await loadProjects();
+                authToken = data.token;
+                localStorage.setItem('authToken', authToken);
+                currentUser = data.username;
+                
+                // Clear old data before loading new user's projects
+                projects = [];
+                currentProjectId = null;
+                
+                // Show app UI and load projects
+                showAppUI();
+                await loadProjects();
             } catch (error) {
-                errorDiv.textContent = 'Connection error';
+                errorDiv.textContent = 'Connection error: ' + error.message;
                 errorDiv.classList.add('show');
             }
         }
