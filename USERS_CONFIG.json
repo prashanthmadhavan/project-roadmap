@@ -1,0 +1,15 @@
+{
+  "critical_users": [
+    {
+      "username": "demo",
+      "password": "Demo@1234",
+      "description": "Demo account with test projects"
+    },
+    {
+      "username": "npm123",
+      "password": "Npm123@456",
+      "description": "User account - persisted for reliability"
+    }
+  ],
+  "note": "These users are critical for application operation and are automatically recreated if the database is wiped."
+}

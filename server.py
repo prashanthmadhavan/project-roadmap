@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 DATABASE_URL = os.environ.get('DATABASE_URL', None)
 USE_POSTGRES = DATABASE_URL is not None
 DB_FILE = 'task_gantt.db'
+USERS_CONFIG_FILE = 'USERS_CONFIG.json'
 
 if USE_POSTGRES:
     try:
@@ -1313,6 +1314,78 @@ def init_database():
             cursor.close()
             conn.close()
 
+def load_critical_users():
+    """Load critical users from config file"""
+    try:
+        if os.path.exists(USERS_CONFIG_FILE):
+            with open(USERS_CONFIG_FILE, 'r') as f:
+                config = json.load(f)
+                return config.get('critical_users', [])
+    except Exception as e:
+        print(f"⚠ Could not load critical users config: {e}")
+    return []
+
+def recreate_critical_users():
+    """Recreate critical users if they're missing (database reset recovery)"""
+    critical_users = load_critical_users()
+    if not critical_users:
+        return
+    
+    try:
+        if USE_POSTGRES:
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            
+            for user_config in critical_users:
+                username = user_config['username']
+                password = user_config['password']
+                
+                # Check if user exists
+                cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', (username,))
+                if cursor.fetchone()[0] == 0:
+                    # User is missing - recreate it
+                    try:
+                        handler = AuthHandler
+                        hashed_password = handler.hash_password(None, password)
+                        cursor.execute(
+                            'INSERT INTO users (username, password) VALUES (%s, %s)',
+                            (username, hashed_password)
+                        )
+                        conn.commit()
+                        print(f"✓ Recreated critical user: {username}")
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"⚠ Could not recreate user {username}: {e}")
+            
+            cursor.close()
+            conn.close()
+        else:
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            
+            for user_config in critical_users:
+                username = user_config['username']
+                password = user_config['password']
+                
+                cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', (username,))
+                if cursor.fetchone()[0] == 0:
+                    try:
+                        handler = AuthHandler
+                        hashed_password = handler.hash_password(None, password)
+                        cursor.execute(
+                            'INSERT INTO users (username, password) VALUES (?, ?)',
+                            (username, hashed_password)
+                        )
+                        conn.commit()
+                        print(f"✓ Recreated critical user: {username}")
+                    except Exception as e:
+                        conn.rollback()
+                        print(f"⚠ Could not recreate user {username}: {e}")
+            
+            conn.close()
+    except Exception as e:
+        print(f"⚠ Error recreating critical users: {e}")
+
 def verify_database_integrity():
     """Verify database has expected users and structure"""
     try:
@@ -1337,7 +1410,8 @@ def verify_database_integrity():
             
             print(f"✓ Database integrity: {total_users} users, {total_projects} projects")
             if demo_count == 0:
-                print("⚠ WARNING: demo user not found - database may have been reset!")
+                print("⚠ WARNING: demo user not found - database may have been reset! Attempting recovery...")
+                recreate_critical_users()
         else:
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
