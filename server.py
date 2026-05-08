@@ -3,35 +3,117 @@ import json
 import os
 import hashlib
 import secrets
+import sqlite3
+import time
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
-import time
-import psycopg2
-from psycopg2.extras import RealDictCursor
+from datetime import datetime, timedelta
 
-DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://localhost:5432/task_gantt')
+# Try PostgreSQL first, fall back to SQLite for local development
+DATABASE_URL = os.environ.get('DATABASE_URL', None)
+USE_POSTGRES = DATABASE_URL is not None
+DB_FILE = 'task_gantt.db'
+
+if USE_POSTGRES:
+    try:
+        import psycopg2
+        from psycopg2.extras import RealDictCursor
+        print("PostgreSQL mode enabled")
+    except ImportError:
+        print("psycopg2 not available, falling back to SQLite")
+        USE_POSTGRES = False
+else:
+    print(f"Using SQLite database: {DB_FILE}")
+
+# Session timeout in seconds (15 minutes)
+SESSION_TIMEOUT = 15 * 60
 
 class AuthHandler(SimpleHTTPRequestHandler):
     """Handle authentication and project management"""
     
-    # Store active sessions: token -> username
+    # Store active sessions: token -> (username, timestamp)
     sessions = {}
 
     def get_db_connection(self):
-        """Get database connection"""
-        try:
-            conn = psycopg2.connect(DATABASE_URL)
-            return conn
-        except psycopg2.Error as e:
-            print(f"Database connection error: {e}")
-            raise
+        """Get database connection (SQLite or PostgreSQL)"""
+        if USE_POSTGRES:
+            try:
+                conn = psycopg2.connect(DATABASE_URL)
+                return conn
+            except psycopg2.Error as e:
+                print(f"PostgreSQL connection error: {e}")
+                raise
+        else:
+            return sqlite3.connect(DB_FILE)
 
     def init_db(self):
         """Initialize database schema"""
-        conn = self.get_db_connection()
+        if USE_POSTGRES:
+            self._init_postgres_db()
+        else:
+            self._init_sqlite_db()
+
+    def _init_sqlite_db(self):
+        """Initialize SQLite database"""
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
         try:
+            # Create users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create projects table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id TEXT PRIMARY KEY,
+                    owner TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    created_at DATE DEFAULT CURRENT_DATE,
+                    FOREIGN KEY (owner) REFERENCES users(username)
+                )
+            ''')
+            
+            # Create tasks table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    dependencies TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            conn.commit()
+            
+            # Create demo user if it doesn't exist
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
+            if cursor.fetchone()[0] == 0:
+                self._create_demo_user_sqlite(cursor, conn)
+            
+        except Exception as e:
+            print(f"Error initializing SQLite database: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    def _init_postgres_db(self):
+        """Initialize PostgreSQL database"""
+        conn = None
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            
             # Create users table
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
@@ -68,67 +150,200 @@ class AuthHandler(SimpleHTTPRequestHandler):
             ''')
             
             conn.commit()
-        except psycopg2.Error as e:
-            conn.rollback()
-            print(f"Error initializing database: {e}")
-        finally:
+            
+            # Create demo user if it doesn't exist
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
+            if cursor.fetchone()[0] == 0:
+                self._create_demo_user_postgres(cursor, conn)
+            
             cursor.close()
-            conn.close()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            print(f"Error initializing PostgreSQL database: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+    def _create_demo_user_sqlite(self, cursor, conn):
+        """Create demo user with test data in SQLite"""
+        try:
+            # Create demo user
+            demo_password = self.hash_password('Demo@1234')
+            cursor.execute(
+                'INSERT INTO users (username, password) VALUES (?, ?)',
+                ('demo', demo_password)
+            )
+            
+            # Create demo project
+            project_id = str(int(time.time() * 1000))
+            today = datetime.now().date()
+            cursor.execute(
+                'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
+                (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+            )
+            
+            # Create sample tasks
+            tasks = [
+                ('Design mockups', today, today + timedelta(days=3)),
+                ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+            ]
+            
+            for idx, (name, start, end) in enumerate(tasks):
+                task_id = str(int(time.time() * 1000) + idx)
+                cursor.execute(
+                    'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
+                    (task_id, project_id, name, start, end, '[]')
+                )
+            
+            conn.commit()
+            print("Demo user created with test data")
+        except Exception as e:
+            print(f"Error creating demo user: {e}")
+
+    def _create_demo_user_postgres(self, cursor, conn):
+        """Create demo user with test data in PostgreSQL"""
+        try:
+            # Create demo user
+            demo_password = self.hash_password('Demo@1234')
+            cursor.execute(
+                'INSERT INTO users (username, password) VALUES (%s, %s)',
+                ('demo', demo_password)
+            )
+            
+            # Create demo project
+            project_id = str(int(time.time() * 1000))
+            today = datetime.now().date()
+            cursor.execute(
+                'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+            )
+            
+            # Create sample tasks
+            tasks = [
+                ('Design mockups', today, today + timedelta(days=3)),
+                ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+            ]
+            
+            for idx, (name, start, end) in enumerate(tasks):
+                task_id = str(int(time.time() * 1000) + idx)
+                cursor.execute(
+                    'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
+                    (task_id, project_id, name, start, end, '[]')
+                )
+            
+            conn.commit()
+            print("Demo user created with test data")
+        except Exception as e:
+            print(f"Error creating demo user: {e}")
+
+    def is_session_valid(self, token):
+        """Check if session token is valid and not expired"""
+        if token not in self.sessions:
+            return False
+        
+        username, timestamp = self.sessions[token]
+        # Check if session has expired (15 minutes)
+        if time.time() - timestamp > SESSION_TIMEOUT:
+            del self.sessions[token]
+            return False
+        
+        # Refresh timestamp on each access
+        self.sessions[token] = (username, time.time())
+        return True
 
     def load_projects(self):
         """Load all projects from database"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cursor.execute('SELECT * FROM projects')
-            projects = cursor.fetchall()
-            
-            # Load tasks for each project
-            for project in projects:
-                cursor.execute('SELECT * FROM tasks WHERE project_id = %s', (project['id'],))
-                tasks = cursor.fetchall()
-                project['tasks'] = [dict(t) for t in tasks]
-                # Convert dependencies from JSON string to list
-                for task in project['tasks']:
-                    if task.get('dependencies'):
-                        task['dependencies'] = json.loads(task['dependencies'])
-                    else:
-                        task['dependencies'] = []
-            
-            cursor.close()
-            conn.close()
-            
-            return [dict(p) for p in projects]
-        except psycopg2.Error as e:
+            if USE_POSTGRES:
+                conn = self.get_db_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                cursor.execute('SELECT * FROM projects')
+                projects = cursor.fetchall()
+                
+                # Load tasks for each project
+                for project in projects:
+                    cursor.execute('SELECT * FROM tasks WHERE project_id = %s', (project['id'],))
+                    tasks = cursor.fetchall()
+                    project['tasks'] = [dict(t) for t in tasks]
+                    # Convert dependencies from JSON string to list
+                    for task in project['tasks']:
+                        if task.get('dependencies'):
+                            task['dependencies'] = json.loads(task['dependencies'])
+                        else:
+                            task['dependencies'] = []
+                
+                cursor.close()
+                conn.close()
+                
+                return [dict(p) for p in projects]
+            else:
+                conn = sqlite3.connect(DB_FILE)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT * FROM projects')
+                projects = [dict(p) for p in cursor.fetchall()]
+                
+                # Load tasks for each project
+                for project in projects:
+                    cursor.execute('SELECT * FROM tasks WHERE project_id = ?', (project['id'],))
+                    tasks = [dict(t) for t in cursor.fetchall()]
+                    project['tasks'] = tasks
+                    # Convert dependencies from JSON string to list
+                    for task in project['tasks']:
+                        if task.get('dependencies'):
+                            task['dependencies'] = json.loads(task['dependencies'])
+                        else:
+                            task['dependencies'] = []
+                
+                conn.close()
+                return projects
+        except Exception as e:
             print(f"Error loading projects: {e}")
             return []
 
     def save_projects(self, projects):
         """Save projects to database (not used anymore, but kept for compatibility)"""
-        # Projects are saved directly to DB in CRUD operations
         pass
 
     def load_users(self):
         """Load all users from database"""
         try:
-            conn = self.get_db_connection()
-            cursor = conn.cursor(cursor_factory=RealDictCursor)
-            
-            cursor.execute('SELECT username, password, created_at FROM users')
-            users = cursor.fetchall()
-            
-            cursor.close()
-            conn.close()
-            
-            return [dict(u) for u in users]
-        except psycopg2.Error as e:
+            if USE_POSTGRES:
+                conn = self.get_db_connection()
+                cursor = conn.cursor(cursor_factory=RealDictCursor)
+                
+                cursor.execute('SELECT username, password, created_at FROM users')
+                users = cursor.fetchall()
+                
+                cursor.close()
+                conn.close()
+                
+                return [dict(u) for u in users]
+            else:
+                conn = sqlite3.connect(DB_FILE)
+                conn.row_factory = sqlite3.Row
+                cursor = conn.cursor()
+                
+                cursor.execute('SELECT username, password, created_at FROM users')
+                users = [dict(u) for u in cursor.fetchall()]
+                
+                conn.close()
+                return users
+        except Exception as e:
             print(f"Error loading users: {e}")
             return []
 
     def save_users(self, users):
         """Save users to database (not used anymore, but kept for compatibility)"""
-        # Users are saved directly to DB in CRUD operations
         pass
 
     def hash_password(self, password):
@@ -156,8 +371,8 @@ class AuthHandler(SimpleHTTPRequestHandler):
     def get_current_user(self):
         """Get current authenticated user from token"""
         token = self.get_auth_token()
-        if token and token in self.sessions:
-            return self.sessions[token]
+        if token and self.is_session_valid(token):
+            return self.sessions[token][0]
         return None
 
     def send_json(self, status_code, data):
@@ -229,34 +444,61 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     self.send_json(400, {'error': 'Password must contain lowercase letters'})
                     return
                 
-                # Check if username already exists and create new user in database
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
+                # Try to insert the user
+                hashed_password = self.hash_password(password)
                 
-                try:
-                    # Try to insert the user
-                    hashed_password = self.hash_password(password)
-                    cursor.execute(
-                        'INSERT INTO users (username, password) VALUES (%s, %s)',
-                        (username, hashed_password)
-                    )
-                    conn.commit()
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
                     
-                    # Create session token
-                    token = secrets.token_urlsafe(32)
-                    self.sessions[token] = username
+                    try:
+                        cursor.execute(
+                            'INSERT INTO users (username, password) VALUES (%s, %s)',
+                            (username, hashed_password)
+                        )
+                        conn.commit()
+                        
+                        # Create session token
+                        token = secrets.token_urlsafe(32)
+                        self.sessions[token] = (username, time.time())
+                        
+                        self.send_json(201, {
+                            'username': username,
+                            'token': token,
+                            'message': 'Account created successfully'
+                        })
+                    except psycopg2.IntegrityError:
+                        conn.rollback()
+                        self.send_json(400, {'error': 'Username already exists'})
+                    finally:
+                        cursor.close()
+                        conn.close()
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
                     
-                    self.send_json(201, {
-                        'username': username,
-                        'token': token,
-                        'message': 'Account created successfully'
-                    })
-                except psycopg2.IntegrityError:
-                    conn.rollback()
-                    self.send_json(400, {'error': 'Username already exists'})
-                finally:
-                    cursor.close()
-                    conn.close()
+                    try:
+                        cursor.execute(
+                            'INSERT INTO users (username, password) VALUES (?, ?)',
+                            (username, hashed_password)
+                        )
+                        conn.commit()
+                        
+                        # Create session token
+                        token = secrets.token_urlsafe(32)
+                        self.sessions[token] = (username, time.time())
+                        
+                        self.send_json(201, {
+                            'username': username,
+                            'token': token,
+                            'message': 'Account created successfully'
+                        })
+                    except sqlite3.IntegrityError:
+                        conn.rollback()
+                        self.send_json(400, {'error': 'Username already exists'})
+                    finally:
+                        cursor.close()
+                        conn.close()
             except json.JSONDecodeError:
                 self.send_json(400, {'error': 'Invalid JSON'})
             except Exception as e:
@@ -269,13 +511,22 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 username = data.get('username', '')
                 password = data.get('password', '')
                 
-                conn = self.get_db_connection()
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                
-                cursor.execute('SELECT username, password FROM users WHERE username = %s', (username,))
-                user = cursor.fetchone()
-                cursor.close()
-                conn.close()
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    
+                    cursor.execute('SELECT username, password FROM users WHERE username = %s', (username,))
+                    user = cursor.fetchone()
+                    cursor.close()
+                    conn.close()
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    
+                    cursor.execute('SELECT username, password FROM users WHERE username = ?', (username,))
+                    user = cursor.fetchone()
+                    conn.close()
                 
                 if not user or not self.verify_password(password, user['password']):
                     self.send_json(401, {'error': 'Invalid username or password'})
@@ -283,7 +534,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 
                 # Create session token
                 token = secrets.token_urlsafe(32)
-                self.sessions[token] = username
+                self.sessions[token] = (username, time.time())
                 
                 self.send_json(200, {
                     'username': username,
@@ -313,16 +564,28 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 data = json.loads(body)
                 project_id = str(int(time.time() * 1000))
                 
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                
-                cursor.execute(
-                    'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
-                    (project_id, username, data.get('name'), data.get('description', ''))
-                )
-                conn.commit()
-                cursor.close()
-                conn.close()
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    cursor.execute(
+                        'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                        (project_id, username, data.get('name'), data.get('description', ''))
+                    )
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+                    
+                    cursor.execute(
+                        'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
+                        (project_id, username, data.get('name'), data.get('description', ''))
+                    )
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
                 
                 new_project = {
                     'id': project_id,
@@ -348,27 +611,54 @@ class AuthHandler(SimpleHTTPRequestHandler):
             try:
                 data = json.loads(body)
                 
-                conn = self.get_db_connection()
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                
-                # Verify project exists and belongs to user
-                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
-                project = cursor.fetchone()
-                
-                if not project or project['owner'] != username:
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project['owner'] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    task_id = str(int(time.time() * 1000))
+                    dependencies_json = json.dumps(data.get('dependencies', []))
+                    
+                    cursor.execute(
+                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
+                        (task_id, project_id, data.get('name'), data.get('startDate'), data.get('endDate'), dependencies_json)
+                    )
+                    conn.commit()
                     cursor.close()
                     conn.close()
-                    self.send_json(404, {'error': 'Project not found'})
-                    return
-                
-                task_id = str(int(time.time() * 1000))
-                dependencies_json = json.dumps(data.get('dependencies', []))
-                
-                cursor.execute(
-                    'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
-                    (task_id, project_id, data.get('name'), data.get('startDate'), data.get('endDate'), dependencies_json)
-                )
-                conn.commit()
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = ?', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project[0] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    task_id = str(int(time.time() * 1000))
+                    dependencies_json = json.dumps(data.get('dependencies', []))
+                    
+                    cursor.execute(
+                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
+                        (task_id, project_id, data.get('name'), data.get('startDate'), data.get('endDate'), dependencies_json)
+                    )
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
                 
                 new_task = {
                     'id': task_id,
@@ -377,9 +667,6 @@ class AuthHandler(SimpleHTTPRequestHandler):
                     'endDate': data.get('endDate'),
                     'dependencies': data.get('dependencies', [])
                 }
-                
-                cursor.close()
-                conn.close()
                 
                 self.send_json(201, new_task)
             except Exception as e:
@@ -403,34 +690,65 @@ class AuthHandler(SimpleHTTPRequestHandler):
             try:
                 data = json.loads(body)
                 
-                conn = self.get_db_connection()
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                
-                # Verify project exists and belongs to user
-                cursor.execute('SELECT * FROM projects WHERE id = %s AND owner = %s', (project_id, username))
-                project = cursor.fetchone()
-                
-                if not project:
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT * FROM projects WHERE id = %s AND owner = %s', (project_id, username))
+                    project = cursor.fetchone()
+                    
+                    if not project:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Update project
+                    cursor.execute(
+                        'UPDATE projects SET name = %s, description = %s WHERE id = %s',
+                        (data.get('name', project['name']), data.get('description', project['description']), project_id)
+                    )
+                    conn.commit()
+                    
+                    # Fetch updated project
+                    cursor.execute('SELECT * FROM projects WHERE id = %s', (project_id,))
+                    updated_project = cursor.fetchone()
+                    
                     cursor.close()
                     conn.close()
-                    self.send_json(404, {'error': 'Project not found'})
-                    return
-                
-                # Update project
-                cursor.execute(
-                    'UPDATE projects SET name = %s, description = %s WHERE id = %s',
-                    (data.get('name', project['name']), data.get('description', project['description']), project_id)
-                )
-                conn.commit()
-                
-                # Fetch updated project
-                cursor.execute('SELECT * FROM projects WHERE id = %s', (project_id,))
-                updated_project = cursor.fetchone()
-                
-                cursor.close()
-                conn.close()
-                
-                self.send_json(200, dict(updated_project))
+                    
+                    self.send_json(200, dict(updated_project))
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT * FROM projects WHERE id = ? AND owner = ?', (project_id, username))
+                    project = cursor.fetchone()
+                    
+                    if not project:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Update project
+                    cursor.execute(
+                        'UPDATE projects SET name = ?, description = ? WHERE id = ?',
+                        (data.get('name', project['name']), data.get('description', project['description']), project_id)
+                    )
+                    conn.commit()
+                    
+                    # Fetch updated project
+                    cursor.execute('SELECT * FROM projects WHERE id = ?', (project_id,))
+                    updated_project = cursor.fetchone()
+                    
+                    cursor.close()
+                    conn.close()
+                    
+                    self.send_json(200, dict(updated_project))
             except Exception as e:
                 self.send_json(400, {'error': str(e)})
         
@@ -441,52 +759,102 @@ class AuthHandler(SimpleHTTPRequestHandler):
             try:
                 data = json.loads(body)
                 
-                conn = self.get_db_connection()
-                cursor = conn.cursor(cursor_factory=RealDictCursor)
-                
-                # Verify project exists and belongs to user
-                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
-                project = cursor.fetchone()
-                
-                if not project or project['owner'] != username:
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor(cursor_factory=RealDictCursor)
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project['owner'] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Verify task exists
+                    cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
+                    task = cursor.fetchone()
+                    
+                    if not task:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Task not found'})
+                        return
+                    
+                    # Update task
+                    dependencies_json = json.dumps(data.get('dependencies', task['dependencies'] if task['dependencies'] else []))
+                    cursor.execute(
+                        'UPDATE tasks SET name = %s, start_date = %s, end_date = %s, dependencies = %s WHERE id = %s',
+                        (data.get('name', task['name']), data.get('startDate', task['start_date']), data.get('endDate', task['end_date']), dependencies_json, task_id)
+                    )
+                    conn.commit()
+                    
+                    # Fetch updated task
+                    cursor.execute('SELECT * FROM tasks WHERE id = %s', (task_id,))
+                    updated_task = cursor.fetchone()
+                    
+                    updated_task_dict = dict(updated_task)
+                    # Convert dependencies from JSON string to list
+                    if updated_task_dict.get('dependencies'):
+                        updated_task_dict['dependencies'] = json.loads(updated_task_dict['dependencies'])
+                    else:
+                        updated_task_dict['dependencies'] = []
+                    
                     cursor.close()
                     conn.close()
-                    self.send_json(404, {'error': 'Project not found'})
-                    return
-                
-                # Verify task exists
-                cursor.execute('SELECT * FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
-                task = cursor.fetchone()
-                
-                if not task:
-                    cursor.close()
-                    conn.close()
-                    self.send_json(404, {'error': 'Task not found'})
-                    return
-                
-                # Update task
-                dependencies_json = json.dumps(data.get('dependencies', task['dependencies'] if task['dependencies'] else []))
-                cursor.execute(
-                    'UPDATE tasks SET name = %s, start_date = %s, end_date = %s, dependencies = %s WHERE id = %s',
-                    (data.get('name', task['name']), data.get('startDate', task['start_date']), data.get('endDate', task['end_date']), dependencies_json, task_id)
-                )
-                conn.commit()
-                
-                # Fetch updated task
-                cursor.execute('SELECT * FROM tasks WHERE id = %s', (task_id,))
-                updated_task = cursor.fetchone()
-                
-                updated_task_dict = dict(updated_task)
-                # Convert dependencies from JSON string to list
-                if updated_task_dict.get('dependencies'):
-                    updated_task_dict['dependencies'] = json.loads(updated_task_dict['dependencies'])
+                    
+                    self.send_json(200, updated_task_dict)
                 else:
-                    updated_task_dict['dependencies'] = []
-                
-                cursor.close()
-                conn.close()
-                
-                self.send_json(200, updated_task_dict)
+                    conn = sqlite3.connect(DB_FILE)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = ?', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project[0] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Verify task exists
+                    cursor.execute('SELECT * FROM tasks WHERE id = ? AND project_id = ?', (task_id, project_id))
+                    task = cursor.fetchone()
+                    
+                    if not task:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Task not found'})
+                        return
+                    
+                    # Update task
+                    task_dict = dict(task)
+                    dependencies_json = json.dumps(data.get('dependencies', task_dict['dependencies'] if task_dict.get('dependencies') else []))
+                    cursor.execute(
+                        'UPDATE tasks SET name = ?, start_date = ?, end_date = ?, dependencies = ? WHERE id = ?',
+                        (data.get('name', task_dict['name']), data.get('startDate', task_dict['start_date']), data.get('endDate', task_dict['end_date']), dependencies_json, task_id)
+                    )
+                    conn.commit()
+                    
+                    # Fetch updated task
+                    cursor.execute('SELECT * FROM tasks WHERE id = ?', (task_id,))
+                    updated_task = cursor.fetchone()
+                    
+                    updated_task_dict = dict(updated_task)
+                    # Convert dependencies from JSON string to list
+                    if updated_task_dict.get('dependencies'):
+                        updated_task_dict['dependencies'] = json.loads(updated_task_dict['dependencies'])
+                    else:
+                        updated_task_dict['dependencies'] = []
+                    
+                    cursor.close()
+                    conn.close()
+                    
+                    self.send_json(200, updated_task_dict)
             except Exception as e:
                 self.send_json(400, {'error': str(e)})
 
@@ -503,24 +871,44 @@ class AuthHandler(SimpleHTTPRequestHandler):
         if len(path_parts) >= 4 and path_parts[1] == 'api' and path_parts[2] == 'projects' and len(path_parts) == 4:
             project_id = path_parts[3]
             try:
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                
-                # Verify project exists and belongs to user
-                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
-                project = cursor.fetchone()
-                
-                if not project or project[0] != username:
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project[0] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Delete project (tasks will be deleted due to CASCADE)
+                    cursor.execute('DELETE FROM projects WHERE id = %s', (project_id,))
+                    conn.commit()
                     cursor.close()
                     conn.close()
-                    self.send_json(404, {'error': 'Project not found'})
-                    return
-                
-                # Delete project (tasks will be deleted due to CASCADE)
-                cursor.execute('DELETE FROM projects WHERE id = %s', (project_id,))
-                conn.commit()
-                cursor.close()
-                conn.close()
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = ?', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project[0] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Delete project (tasks will be deleted due to CASCADE)
+                    cursor.execute('DELETE FROM projects WHERE id = ?', (project_id,))
+                    conn.commit()
+                    cursor.close()
+                    conn.close()
                 
                 self.send_json(200, {'success': True})
             except Exception as e:
@@ -531,34 +919,64 @@ class AuthHandler(SimpleHTTPRequestHandler):
             project_id = path_parts[3]
             task_id = path_parts[5]
             try:
-                conn = self.get_db_connection()
-                cursor = conn.cursor()
-                
-                # Verify project exists and belongs to user
-                cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
-                project = cursor.fetchone()
-                
-                if not project or project[0] != username:
+                if USE_POSTGRES:
+                    conn = self.get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = %s', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project[0] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Verify task exists
+                    cursor.execute('SELECT id FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
+                    task = cursor.fetchone()
+                    
+                    if not task:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Task not found'})
+                        return
+                    
+                    # Delete task
+                    cursor.execute('DELETE FROM tasks WHERE id = %s', (task_id,))
+                    conn.commit()
                     cursor.close()
                     conn.close()
-                    self.send_json(404, {'error': 'Project not found'})
-                    return
-                
-                # Verify task exists
-                cursor.execute('SELECT id FROM tasks WHERE id = %s AND project_id = %s', (task_id, project_id))
-                task = cursor.fetchone()
-                
-                if not task:
+                else:
+                    conn = sqlite3.connect(DB_FILE)
+                    cursor = conn.cursor()
+                    
+                    # Verify project exists and belongs to user
+                    cursor.execute('SELECT owner FROM projects WHERE id = ?', (project_id,))
+                    project = cursor.fetchone()
+                    
+                    if not project or project[0] != username:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Project not found'})
+                        return
+                    
+                    # Verify task exists
+                    cursor.execute('SELECT id FROM tasks WHERE id = ? AND project_id = ?', (task_id, project_id))
+                    task = cursor.fetchone()
+                    
+                    if not task:
+                        cursor.close()
+                        conn.close()
+                        self.send_json(404, {'error': 'Task not found'})
+                        return
+                    
+                    # Delete task
+                    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+                    conn.commit()
                     cursor.close()
                     conn.close()
-                    self.send_json(404, {'error': 'Task not found'})
-                    return
-                
-                # Delete task
-                cursor.execute('DELETE FROM tasks WHERE id = %s', (task_id,))
-                conn.commit()
-                cursor.close()
-                conn.close()
                 
                 self.send_json(200, {'success': True})
             except Exception as e:
@@ -578,54 +996,174 @@ class AuthHandler(SimpleHTTPRequestHandler):
 
 def init_database():
     """Initialize database schema on startup"""
-    try:
-        conn = psycopg2.connect(DATABASE_URL)
+    if USE_POSTGRES:
+        try:
+            conn = psycopg2.connect(DATABASE_URL)
+            cursor = conn.cursor()
+            
+            # Create users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id SERIAL PRIMARY KEY,
+                    username VARCHAR(255) UNIQUE NOT NULL,
+                    password VARCHAR(255) NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create projects table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id VARCHAR(255) PRIMARY KEY,
+                    owner VARCHAR(255) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    description TEXT,
+                    created_at DATE DEFAULT CURRENT_DATE,
+                    FOREIGN KEY (owner) REFERENCES users(username)
+                )
+            ''')
+            
+            # Create tasks table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id VARCHAR(255) PRIMARY KEY,
+                    project_id VARCHAR(255) NOT NULL,
+                    name VARCHAR(255) NOT NULL,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    dependencies TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Create demo user if it doesn't exist
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
+            if cursor.fetchone()[0] == 0:
+                # Create demo user
+                salt = secrets.token_hex(16)
+                hash_obj = hashlib.pbkdf2_hmac('sha256', 'Demo@1234'.encode(), salt.encode(), 100000)
+                demo_password = f"{salt}${hash_obj.hex()}"
+                
+                cursor.execute(
+                    'INSERT INTO users (username, password) VALUES (%s, %s)',
+                    ('demo', demo_password)
+                )
+                
+                # Create demo project
+                project_id = str(int(time.time() * 1000))
+                today = datetime.now().date()
+                cursor.execute(
+                    'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                    (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+                )
+                
+                # Create sample tasks
+                tasks = [
+                    ('Design mockups', today, today + timedelta(days=3)),
+                    ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                    ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                    ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                    ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+                ]
+                
+                for idx, (name, start, end) in enumerate(tasks):
+                    task_id = str(int(time.time() * 1000) + idx)
+                    cursor.execute(
+                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
+                        (task_id, project_id, name, start, end, '[]')
+                    )
+            
+            conn.commit()
+            cursor.close()
+            conn.close()
+            print("PostgreSQL database initialized successfully")
+        except Exception as e:
+            print(f"Warning: Could not initialize PostgreSQL database: {e}")
+    else:
+        # SQLite initialization
+        conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         
-        # Create users table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(255) UNIQUE NOT NULL,
-                password VARCHAR(255) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Create projects table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS projects (
-                id VARCHAR(255) PRIMARY KEY,
-                owner VARCHAR(255) NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                description TEXT,
-                created_at DATE DEFAULT CURRENT_DATE,
-                FOREIGN KEY (owner) REFERENCES users(username)
-            )
-        ''')
-        
-        # Create tasks table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS tasks (
-                id VARCHAR(255) PRIMARY KEY,
-                project_id VARCHAR(255) NOT NULL,
-                name VARCHAR(255) NOT NULL,
-                start_date DATE NOT NULL,
-                end_date DATE NOT NULL,
-                dependencies TEXT,
-                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-            )
-        ''')
-        
-        conn.commit()
-        cursor.close()
-        conn.close()
-        print("Database initialized successfully")
-    except psycopg2.Error as e:
-        print(f"Warning: Could not initialize database: {e}")
-        print("Database will be created on first request")
-    except Exception as e:
-        print(f"Warning: Database initialization error: {e}")
+        try:
+            # Create users table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY,
+                    username TEXT UNIQUE NOT NULL,
+                    password TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            # Create projects table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS projects (
+                    id TEXT PRIMARY KEY,
+                    owner TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    created_at DATE DEFAULT CURRENT_DATE,
+                    FOREIGN KEY (owner) REFERENCES users(username)
+                )
+            ''')
+            
+            # Create tasks table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    start_date DATE NOT NULL,
+                    end_date DATE NOT NULL,
+                    dependencies TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                )
+            ''')
+            
+            # Create demo user if it doesn't exist
+            cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
+            if cursor.fetchone()[0] == 0:
+                # Create demo user
+                salt = secrets.token_hex(16)
+                hash_obj = hashlib.pbkdf2_hmac('sha256', 'Demo@1234'.encode(), salt.encode(), 100000)
+                demo_password = f"{salt}${hash_obj.hex()}"
+                
+                cursor.execute(
+                    'INSERT INTO users (username, password) VALUES (?, ?)',
+                    ('demo', demo_password)
+                )
+                
+                # Create demo project
+                project_id = str(int(time.time() * 1000))
+                today = datetime.now().date()
+                cursor.execute(
+                    'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
+                    (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+                )
+                
+                # Create sample tasks
+                tasks = [
+                    ('Design mockups', today, today + timedelta(days=3)),
+                    ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                    ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                    ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                    ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+                ]
+                
+                for idx, (name, start, end) in enumerate(tasks):
+                    task_id = str(int(time.time() * 1000) + idx)
+                    cursor.execute(
+                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
+                        (task_id, project_id, name, start, end, '[]')
+                    )
+            
+            conn.commit()
+            print("SQLite database initialized successfully")
+        except Exception as e:
+            print(f"Warning: Could not initialize SQLite database: {e}")
+        finally:
+            cursor.close()
+            conn.close()
 
 if __name__ == '__main__':
     # Initialize database on startup
