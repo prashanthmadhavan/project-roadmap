@@ -7,12 +7,14 @@ An interactive web-based task management application with Gantt chart visualizat
 
 ## Features
 
+- **Multi-Project Support**: Create and manage multiple projects independently
+- **Project-Scoped Tasks**: Each project has its own tasks and dependencies
 - **Task Management**: Create, read, update, and delete tasks with ease
-- **Gantt Chart Visualization**: View all tasks on an interactive timeline
+- **Gantt Chart Visualization**: View all tasks on an interactive timeline per project
 - **Dependency Tracking**: Define task dependencies and visualize them with arrows
 - **Real-time Updates**: All changes are immediately reflected in the chart
 - **Responsive Design**: Works on desktop and tablet devices
-- **Data Persistence**: Tasks are saved to JSON file storage
+- **Data Persistence**: Projects and tasks are saved to JSON file storage
 
 ## Technologies
 
@@ -57,28 +59,57 @@ See [HOSTING.md](HOSTING.md) for detailed deployment instructions for each platf
 
 ## Usage
 
-### Adding a Task
+### Creating a Project
 
-1. Enter the task name in the "Task Name" field
-2. Select a start date and end date
-3. Optionally, select dependent tasks from the "Dependencies" dropdown
-4. Click "Add Task" to save
+1. Click the **"+ New"** tab in the Projects section
+2. Enter the project name and optional description
+3. Click **"Create Project"**
+4. Your project appears in the projects list
+
+### Adding a Task to Project
+
+1. **Select a project** from the list in the sidebar
+2. The task form appears on the right sidebar
+3. Enter task details:
+   - **Task Name**: Name of the task
+   - **Start Date**: When the task starts
+   - **End Date**: When the task ends
+4. **(Optional)** Add dependencies:
+   - Select a task from the dropdown
+   - Click "Add Dependency"
+5. Click **"Add Task"** to save
 
 ### Managing Dependencies
 
 1. From the task form, select a task from the "Dependencies" dropdown
 2. Click "Add Dependency" to add it
 3. To remove a dependency, click the "Remove" button next to it
+4. Dependencies are shown as orange arrows in the Gantt chart
+
+### Viewing Project Gantt Chart
+
+1. Select a project from the sidebar
+2. The Gantt chart appears in the main area
+3. **Green bars** = tasks with their durations
+4. **Orange arrows** = task dependencies
+5. Tasks are organized by date timeline
 
 ### Editing Tasks
 
-1. Click the "Edit" button on any task in the task list
+1. Click the **"Edit"** button on any task in the task list
 2. Modify the task details in the modal
-3. Click "Save" to apply changes
+3. Click **"Save"** to apply changes
 
-### Deleting Tasks
+### Editing Projects
 
-1. Click the "Delete" button on any task in the task list
+1. Click the project name in the sidebar
+2. Click **"Edit"** icon (appears on hover)
+3. Update project name and description
+4. Click **"Save"** to apply changes
+
+### Deleting Tasks or Projects
+
+1. Click the **"Delete"** button on the task or project
 2. Confirm the deletion in the prompt
 
 ## Project Structure
@@ -86,11 +117,14 @@ See [HOSTING.md](HOSTING.md) for detailed deployment instructions for each platf
 ```
 project-roadmap/
 ├── server.py                    # Python HTTP server with API endpoints
-├── index.html                   # Main application UI
-├── tasks.json                   # Task data storage
-├── roadmap_test_data.xlsx       # Test data in Excel format
-├── generate_test_data.py        # Script to generate test data
+├── index.html                   # Main application UI (multi-project)
+├── projects.json                # Projects and tasks data storage
+├── roadmap_test_data.xlsx       # Legacy test data in Excel format
+├── generate_test_data.py        # Legacy test data generator
+├── generate_projects_data.py    # Multi-project test data generator
 ├── README.md                    # This file
+├── MULTI_PROJECT_GUIDE.md       # Multi-project feature documentation
+├── HOSTING.md                   # Deployment options guide
 └── .gitignore                   # Git ignore rules
 ```
 
@@ -98,14 +132,30 @@ project-roadmap/
 
 The application exposes the following REST API endpoints:
 
-- `GET /api/tasks` - Retrieve all tasks
-- `POST /api/tasks` - Create a new task
-- `PUT /api/tasks/<task_id>` - Update a task
-- `DELETE /api/tasks/<task_id>` - Delete a task
+### Projects API
+
+- `GET /api/projects` - Retrieve all projects with their tasks
+- `POST /api/projects` - Create a new project
+- `PUT /api/projects/<project_id>` - Update a project
+- `DELETE /api/projects/<project_id>` - Delete a project and all its tasks
+
+### Tasks API (Project-Scoped)
+
+- `POST /api/projects/<project_id>/tasks` - Add task to a project
+- `PUT /api/projects/<project_id>/tasks/<task_id>` - Update a task
+- `DELETE /api/projects/<project_id>/tasks/<task_id>` - Delete a task
 
 ### Request/Response Format
 
-**Create Task (POST /api/tasks)**
+**Create Project (POST /api/projects)**
+```json
+{
+  "name": "Project Name",
+  "description": "Project description"
+}
+```
+
+**Create Task (POST /api/projects/<project_id>/tasks)**
 ```json
 {
   "name": "Task Name",
@@ -115,14 +165,22 @@ The application exposes the following REST API endpoints:
 }
 ```
 
-**Task Response**
+**Project Response**
 ```json
 {
   "id": "1715159234000",
-  "name": "Task Name",
-  "startDate": "2026-05-01",
-  "endDate": "2026-05-31",
-  "dependencies": ["task_id_1", "task_id_2"]
+  "name": "Project Name",
+  "description": "Project description",
+  "createdAt": "2026-05-01",
+  "tasks": [
+    {
+      "id": "1-1",
+      "name": "Task Name",
+      "startDate": "2026-05-01",
+      "endDate": "2026-05-31",
+      "dependencies": []
+    }
+  ]
 }
 ```
 
