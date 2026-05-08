@@ -502,6 +502,149 @@
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            width: 90%;
+            max-width: 500px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+            font-size: 20px;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+            border-top: 1px solid #eee;
+            padding-top: 15px;
+        }
+
+        .modal-footer button {
+            width: auto;
+            margin: 0;
+        }
+
+        .modal-footer .cancel-btn {
+            background: #999;
+        }
+
+        .modal-footer .cancel-btn:hover {
+            background: #777;
+        }
+
+        /* Timeline slider styles */
+        .timeline-slider-container {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 4px;
+            border-top: 1px solid #ddd;
+        }
+
+        .timeline-slider-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .timeline-slider-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .timeline-slider {
+            flex: 1;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+            cursor: pointer;
+        }
+
+        .timeline-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #667eea;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .timeline-slider::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #667eea;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .timeline-dates {
+            font-size: 11px;
+            color: #666;
+            min-width: 150px;
+            text-align: right;
+        }
     </style>
 </head>
 <body>
@@ -663,6 +806,40 @@
                 <div id="gantt-container" class="empty-state">
                     <p>👈 Select a project from the left sidebar</p>
                 </div>
+                <div id="timelineSliderContainer" class="timeline-slider-container" style="display: none;">
+                    <div class="timeline-slider-label">📅 Timeline Navigation (3-week window)</div>
+                    <div class="timeline-slider-wrapper">
+                        <input type="range" id="timelineSlider" class="timeline-slider" min="0" max="100" value="0">
+                        <div class="timeline-dates" id="timelineDates"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Task Modal -->
+    <div id="editTaskModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Edit Task</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Task Name</label>
+                    <input type="text" id="editTaskName" placeholder="Task name">
+                </div>
+                <div class="form-group">
+                    <label>Start Date</label>
+                    <input type="date" id="editStartDate">
+                </div>
+                <div class="form-group">
+                    <label>End Date</label>
+                    <input type="date" id="editEndDate">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="cancel-btn" onclick="closeEditTaskModal()">Cancel</button>
+                <button onclick="saveEditTask()">Save Changes</button>
             </div>
         </div>
     </div>
@@ -681,16 +858,22 @@
         let pendingTaskUpdate = null; // Queue for pending task update
         let dragUpdateTimer = null; // Timer for debouncing drag updates
         
-        // Gantt chart scales (updated during renderGantt)
-        let currentXScale = null;
-        let currentYScale = null;
-        let currentWidth = null;
-        let currentHeight = null;
-        let currentMinDate = null;
-        let currentMaxDate = null;
-        let currentTasks = null;
-        
-        // Session management (15 minutes = 900 seconds)
+         // Gantt chart scales (updated during renderGantt)
+         let currentXScale = null;
+         let currentYScale = null;
+         let currentWidth = null;
+         let currentHeight = null;
+         let currentMinDate = null;
+         let currentMaxDate = null;
+         let currentTasks = null;
+         
+         // Slider variables for 3-week window
+         const WINDOW_DAYS = 21; // 3 weeks
+         let sliderMinDate = null;
+         let sliderMaxDate = null;
+         let windowStartDate = null;
+         
+         // Session management (15 minutes = 900 seconds)
         const SESSION_TIMEOUT = 15 * 60 * 1000; // 15 minutes in milliseconds
         let sessionWarningShown = false;
         let sessionCheckInterval = null;
@@ -764,7 +947,9 @@
             
             if (dragMode === 'horizontal') {
                 // Horizontal drag: shift task dates
-                const dayWidth = currentWidth / (currentMaxDate - currentMinDate) * 1000 * 60 * 60 * 24;
+                // Calculate total days between min and max date
+                const totalDays = (currentMaxDate - currentMinDate) / (1000 * 60 * 60 * 24);
+                const dayWidth = currentWidth / totalDays;
                 const daysShifted = Math.round(deltaX / dayWidth);
 
                 if (daysShifted === 0) return;
@@ -785,7 +970,8 @@
                 pendingTaskUpdate = { id: draggedBar.id, data: { ...draggedBar } };
             } else if (dragMode === 'vertical') {
                 // Vertical drag: reorder tasks (swimlane drag)
-                const taskHeight = currentYScale.bandwidth() + currentYScale.padding() * currentYScale.bandwidth();
+                // TaskHeight = bandwidth (height of one task) + padding space
+                const taskHeight = currentYScale.bandwidth() + currentYScale.step() - currentYScale.bandwidth();
                 const newIndex = Math.round(deltaY / taskHeight);
                 
                 // Find current index
@@ -989,25 +1175,43 @@
             }
         }
 
-        async function logout() {
-            // Clear session monitor
-            if (sessionCheckInterval) clearInterval(sessionCheckInterval);
-            
-            authToken = null;
-            localStorage.removeItem('authToken');
-            currentUser = null;
-            projects = [];
-            currentProjectId = null;
-            
-            // Clear all UI data
-            document.getElementById('projectsList').innerHTML = '';
-            document.getElementById('tasksList').innerHTML = '';
-            document.getElementById('gantt-container').innerHTML = '';
-            document.getElementById('loginUsername').value = '';
-            document.getElementById('loginPassword').value = '';
-            
-            showAuthUI();
-        }
+         async function logout() {
+             // Clear session monitor
+             if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+             
+             // Send logout request to server to invalidate session
+             try {
+                 await apiCall('/api/auth/logout', {
+                     method: 'POST',
+                     headers: { 'Authorization': `Bearer ${authToken}` }
+                 });
+             } catch (error) {
+                 console.error('Logout error (continuing):', error);
+             }
+             
+             // Clear all client-side data
+             authToken = null;
+             localStorage.removeItem('authToken');
+             currentUser = null;
+             projects = [];
+             currentProjectId = null;
+             currentDependencies = [];
+             
+             // Clear all UI data
+             document.getElementById('projectsList').innerHTML = '';
+             document.getElementById('tasksList').innerHTML = '';
+             document.getElementById('gantt-container').innerHTML = '';
+             document.getElementById('loginUsername').value = '';
+             document.getElementById('loginPassword').value = '';
+             
+             // Close any open modals
+             const editModal = document.getElementById('editTaskModal');
+             if (editModal) {
+                 editModal.classList.remove('show');
+             }
+             
+             showAuthUI();
+         }
 
         async function loadProjects() {
              try {
@@ -1218,22 +1422,96 @@
              }
         }
 
-         async function deleteTask(taskId) {
-             if (!confirm('Delete this task?')) return;
+          async function deleteTask(taskId) {
+              if (!confirm('Delete this task?')) return;
+
+              try {
+                  await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
+                      method: 'DELETE',
+                      headers: { 'Authorization': `Bearer ${authToken}` }
+                  });
+                  loadProjects();
+                  selectProject(currentProjectId);
+              } catch (error) {
+                  console.error('Error deleting task:', error);
+              }
+          }
+
+         let editingTaskId = null;
+
+         function openEditTaskModal(taskId) {
+             const project = projects.find(p => p.id === currentProjectId);
+             if (!project) return;
+             
+             const task = project.tasks.find(t => t.id === taskId);
+             if (!task) return;
+             
+             editingTaskId = taskId;
+             
+             // Populate form with current task data
+             document.getElementById('editTaskName').value = task.name;
+             document.getElementById('editStartDate').value = task.startDate;
+             document.getElementById('editEndDate').value = task.endDate;
+             
+             // Show modal
+             const modal = document.getElementById('editTaskModal');
+             modal.classList.add('show');
+         }
+
+         function closeEditTaskModal() {
+             const modal = document.getElementById('editTaskModal');
+             modal.classList.remove('show');
+             editingTaskId = null;
+         }
+
+         async function saveEditTask() {
+             if (!editingTaskId || !currentProjectId) {
+                 alert('Error: No task selected');
+                 return;
+             }
+
+             const name = document.getElementById('editTaskName').value.trim();
+             const startDate = document.getElementById('editStartDate').value;
+             const endDate = document.getElementById('editEndDate').value;
+
+             if (!name || !startDate || !endDate) {
+                 alert('Please fill in all fields');
+                 return;
+             }
+
+             // Validate date range
+             const start = new Date(startDate);
+             const end = new Date(endDate);
+             
+             if (start > end) {
+                 alert('Start date must be before end date');
+                 return;
+             }
+
+             if (start.getTime() === end.getTime()) {
+                 alert('Task must span at least one day');
+                 return;
+             }
 
              try {
-                 await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
-                     method: 'DELETE',
-                     headers: { 'Authorization': `Bearer ${authToken}` }
+                 const project = projects.find(p => p.id === currentProjectId);
+                 const task = project.tasks.find(t => t.id === editingTaskId);
+                 
+                 await updateTask(editingTaskId, {
+                     name,
+                     startDate,
+                     endDate,
+                     dependencies: task.dependencies
                  });
-                 loadProjects();
-                 selectProject(currentProjectId);
+
+                 closeEditTaskModal();
              } catch (error) {
-                 console.error('Error deleting task:', error);
+                 console.error('Error saving task:', error);
+                 alert('Failed to save task changes');
              }
          }
 
-        function renderProjectsList() {
+         function renderProjectsList() {
              const container = document.getElementById('projectsList');
              container.innerHTML = projects.map(project => `
                  <div class="project-item ${project.id === currentProjectId ? 'active' : ''}" 
@@ -1253,37 +1531,42 @@
              });
          }
 
-        function renderTasks() {
-             if (!currentProjectId) {
-                 document.getElementById('tasksList').innerHTML = '';
-                 return;
-             }
+         function renderTasks() {
+              if (!currentProjectId) {
+                  document.getElementById('tasksList').innerHTML = '';
+                  return;
+              }
 
-             const project = projects.find(p => p.id === currentProjectId);
-             if (!project) return;
+              const project = projects.find(p => p.id === currentProjectId);
+              if (!project) return;
 
-             const container = document.getElementById('tasksList');
-             container.innerHTML = project.tasks.map(task => {
-                 const start = new Date(task.startDate).toLocaleDateString();
-                 const end = new Date(task.endDate).toLocaleDateString();
-                 return `
-                     <div class="task-item" data-task-id="${escapeHtml(task.id)}">
-                         <strong>${escapeHtml(task.name)}</strong><br>
-                         <small>${start} → ${end}</small>
-                         <div class="task-item-actions">
-                             <button class="delete-btn" data-action="delete-task">Delete</button>
-                         </div>
-                     </div>
-                 `;
-             }).join('');
-             
-             // Add event delegation listener for delete buttons
-             container.addEventListener('click', (e) => {
-                 if (e.target.getAttribute('data-action') === 'delete-task') {
-                     const taskItem = e.target.closest('[data-task-id]');
-                     if (taskItem) {
-                         const taskId = taskItem.dataset.taskId;
-                         deleteTask(taskId);
+              const container = document.getElementById('tasksList');
+              container.innerHTML = project.tasks.map(task => {
+                  const start = new Date(task.startDate).toLocaleDateString();
+                  const end = new Date(task.endDate).toLocaleDateString();
+                  return `
+                      <div class="task-item" data-task-id="${escapeHtml(task.id)}">
+                          <strong>${escapeHtml(task.name)}</strong><br>
+                          <small>${start} → ${end}</small>
+                          <div class="task-item-actions">
+                              <button class="edit-btn" data-action="edit-task">Edit</button>
+                              <button class="delete-btn" data-action="delete-task">Delete</button>
+                          </div>
+                      </div>
+                  `;
+              }).join('');
+              
+              // Add event delegation listener for edit and delete buttons
+              container.addEventListener('click', (e) => {
+                  const taskItem = e.target.closest('[data-task-id]');
+                  if (!taskItem) return;
+                  
+                  const taskId = taskItem.dataset.taskId;
+                  
+                  if (e.target.getAttribute('data-action') === 'edit-task') {
+                      openEditTaskModal(taskId);
+                  } else if (e.target.getAttribute('data-action') === 'delete-task') {
+                      deleteTask(taskId);
                      }
                  }
              });
@@ -1547,18 +1830,96 @@
                 });
             });
 
-            // Draw axes (weekly)
-            // Draw x-axis with weekly labels
-            const xAxis = d3.axisBottom(xScale)
-                .ticks(d3.timeWeek)
-                .tickFormat(d3.timeFormat('%b %d'));
-            svg.append('g')
-                .attr('transform', `translate(0,${height - margin.bottom})`)
-                .attr('class', 'gantt-axis')
-                .call(xAxis);
+             // Draw axes (weekly)
+             // Draw x-axis with weekly labels
+             const xAxis = d3.axisBottom(xScale)
+                 .ticks(d3.timeWeek)
+                 .tickFormat(d3.timeFormat('%b %d'));
+             svg.append('g')
+                 .attr('transform', `translate(0,${height - margin.bottom})`)
+                 .attr('class', 'gantt-axis')
+                 .call(xAxis);
 
-            // Drag event listeners are now global (defined in main script scope)
-        }
+             // Initialize timeline slider for 3-week window navigation
+             initializeTimelineSlider(minDate, maxDate);
+
+             // Drag event listeners are now global (defined in main script scope)
+         }
+
+         function initializeTimelineSlider(minDate, maxDate) {
+             const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+             
+             // Only show slider if project spans more than 3 weeks
+             if (totalDays > WINDOW_DAYS) {
+                 sliderMinDate = new Date(minDate);
+                 sliderMaxDate = new Date(maxDate);
+                 windowStartDate = new Date(minDate);
+                 
+                 const slider = document.getElementById('timelineSlider');
+                 const sliderContainer = document.getElementById('timelineSliderContainer');
+                 
+                 // Set slider max value (number of possible 3-week windows)
+                 const maxSliderValue = totalDays - WINDOW_DAYS;
+                 slider.max = Math.ceil(maxSliderValue);
+                 slider.value = 0;
+                 
+                 // Update date display
+                 updateTimelineSliderDisplay();
+                 
+                 // Show slider container
+                 sliderContainer.style.display = 'block';
+                 
+                 // Add change listener
+                 slider.addEventListener('change', updateTimelineWindow);
+                 slider.addEventListener('input', updateTimelineWindow);
+             } else {
+                 // Hide slider if project is short
+                 document.getElementById('timelineSliderContainer').style.display = 'none';
+             }
+         }
+
+         function updateTimelineWindow() {
+             const slider = document.getElementById('timelineSlider');
+             const daysOffset = parseInt(slider.value);
+             
+             if (!sliderMinDate) return;
+             
+             // Calculate new window start date
+             windowStartDate = new Date(sliderMinDate);
+             windowStartDate.setDate(windowStartDate.getDate() + daysOffset);
+             
+             // Calculate new window end date (3 weeks from start)
+             const windowEndDate = new Date(windowStartDate);
+             windowEndDate.setDate(windowEndDate.getDate() + WINDOW_DAYS);
+             
+             // Update display
+             updateTimelineSliderDisplay();
+             
+             // Re-render Gantt chart with new window
+             renderGanttWithWindow(windowStartDate, windowEndDate);
+         }
+
+         function updateTimelineSliderDisplay() {
+             if (!windowStartDate) return;
+             
+             const windowEndDate = new Date(windowStartDate);
+             windowEndDate.setDate(windowEndDate.getDate() + WINDOW_DAYS);
+             
+             const startStr = windowStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+             const endStr = windowEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+             
+             document.getElementById('timelineDates').textContent = `${startStr} → ${endStr}`;
+         }
+
+         function renderGanttWithWindow(windowStart, windowEnd) {
+             // This function would re-render the Gantt chart with a zoomed view
+             // For now, we keep the full view but this enables future zoom functionality
+             // A full implementation would update the xScale domain to [windowStart, windowEnd]
+             // and re-render only the visible portion
+             
+             console.log('Timeline window:', windowStart, 'to', windowEnd);
+             // Could implement focused rendering here
+         }
 
          async function updateTask(taskId, taskData) {
              try {
