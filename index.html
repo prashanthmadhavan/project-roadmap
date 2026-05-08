@@ -1242,47 +1242,51 @@
             }
         }
 
-        async function register() {
-            const username = document.getElementById('registerUsername').value.trim();
-            const password = document.getElementById('registerPassword').value;
-            const errorDiv = document.getElementById('registerError');
+         async function register() {
+             const username = document.getElementById('registerUsername').value.trim();
+             const password = document.getElementById('registerPassword').value;
+             const errorDiv = document.getElementById('registerError');
 
-            errorDiv.classList.remove('show');
+             errorDiv.classList.remove('show');
 
-            if (!username || !password) {
-                errorDiv.textContent = 'Please enter username and password';
-                errorDiv.classList.add('show');
-                return;
-            }
+             if (!username || !password) {
+                 errorDiv.textContent = 'Please enter username and password';
+                 errorDiv.classList.add('show');
+                 return;
+             }
 
-            try {
-                const response = await apiCall('/api/auth/register', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
+             try {
+                 const response = await apiCall('/api/auth/register', {
+                     method: 'POST',
+                     headers: { 'Content-Type': 'application/json' },
+                     body: JSON.stringify({ username, password })
+                 });
 
-                const data = await response.json();
+                 const data = await response.json();
 
-                if (!response.ok) {
-                    errorDiv.textContent = data.error || 'Registration failed';
-                    errorDiv.classList.add('show');
-                    return;
-                }
+                 if (!response.ok) {
+                     errorDiv.textContent = data.error || 'Registration failed';
+                     errorDiv.classList.add('show');
+                     return;
+                 }
 
-                authToken = data.token;
-                localStorage.setItem('authToken', authToken);
-                currentUser = data.username;
+                 authToken = data.token;
+                 localStorage.setItem('authToken', authToken);
+                 currentUser = data.username;
+                 
+                 // Clear old data before loading new user's projects (Defect #6 fix)
+                 projects = [];
+                 currentProjectId = null;
 
-                setTimeout(() => {
-                    showAppUI();
-                    loadProjects();
-                }, 1500);
-            } catch (error) {
-                errorDiv.textContent = 'Connection error';
-                errorDiv.classList.add('show');
-            }
-        }
+                 setTimeout(() => {
+                     showAppUI();
+                     loadProjects();
+                 }, 1500);
+             } catch (error) {
+                 errorDiv.textContent = 'Connection error';
+                 errorDiv.classList.add('show');
+             }
+         }
 
          async function logout() {
              // Clear session monitor
@@ -1531,20 +1535,29 @@
              }
         }
 
-          async function deleteTask(taskId) {
-              if (!confirm('Delete this task?')) return;
+           async function deleteTask(taskId) {
+               if (!confirm('Delete this task?')) return;
 
-              try {
-                  await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
-                      method: 'DELETE',
-                      headers: { 'Authorization': `Bearer ${authToken}` }
-                  });
-                  loadProjects();
-                  selectProject(currentProjectId);
-              } catch (error) {
-                  console.error('Error deleting task:', error);
-              }
-          }
+               try {
+                   // Remove task immediately from UI (optimistic update, Defect #8 fix)
+                   const project = projects.find(p => p.id === currentProjectId);
+                   if (project) {
+                       project.tasks = project.tasks.filter(t => t.id !== taskId);
+                       renderTasks();
+                       renderGantt();
+                   }
+                   
+                   // Send delete request to server
+                   await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
+                       method: 'DELETE',
+                       headers: { 'Authorization': `Bearer ${authToken}` }
+                   });
+               } catch (error) {
+                   console.error('Error deleting task:', error);
+                   // Reload on error to sync with server
+                   loadProjects();
+               }
+           }
 
          let editingTaskId = null;
 

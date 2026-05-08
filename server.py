@@ -1161,47 +1161,56 @@ def init_database():
                 )
             ''')
             
-            # Create demo user if it doesn't exist
-            cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
-            if cursor.fetchone()[0] == 0:
-                # Create demo user
-                salt = secrets.token_hex(16)
-                hash_obj = hashlib.pbkdf2_hmac('sha256', 'Demo@1234'.encode(), salt.encode(), 100000)
-                demo_password = f"{salt}${hash_obj.hex()}"
-                
-                cursor.execute(
-                    'INSERT INTO users (username, password) VALUES (%s, %s)',
-                    ('demo', demo_password)
-                )
-                
-                # Create demo project
-                project_id = str(int(time.time() * 1000))
-                today = datetime.now().date()
-                cursor.execute(
-                    'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
-                    (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
-                )
-                
-                # Create sample tasks
-                tasks = [
-                    ('Design mockups', today, today + timedelta(days=3)),
-                    ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
-                    ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
-                    ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
-                    ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
-                ]
-                
-                for idx, (name, start, end) in enumerate(tasks):
-                    task_id = str(int(time.time() * 1000) + idx)
-                    cursor.execute(
-                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
-                        (task_id, project_id, name, start, end, '[]')
-                    )
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
-            print("✓ PostgreSQL database schema initialized")
+             # Create demo user if it doesn't exist
+             try:
+                 cursor.execute('SELECT COUNT(*) FROM users WHERE username = %s', ('demo',))
+                 demo_exists = cursor.fetchone()[0] > 0
+                 
+                 if not demo_exists:
+                     print("  Creating demo user...")
+                     # Create demo user with proper hashing
+                     demo_password = AuthHandler.hash_password(None, 'Demo@1234')
+                     
+                     cursor.execute(
+                         'INSERT INTO users (username, password, advanced_mode) VALUES (%s, %s, %s)',
+                         ('demo', demo_password, False)
+                     )
+                     print("  ✓ Demo user created")
+                     
+                     # Create demo project
+                     project_id = str(int(time.time() * 1000))
+                     today = datetime.now().date()
+                     cursor.execute(
+                         'INSERT INTO projects (id, owner, name, description) VALUES (%s, %s, %s, %s)',
+                         (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+                     )
+                     print("  ✓ Demo project created")
+                     
+                     # Create sample tasks
+                     tasks = [
+                         ('Design mockups', today, today + timedelta(days=3)),
+                         ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                         ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                         ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                         ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+                     ]
+                     
+                     for idx, (name, start, end) in enumerate(tasks):
+                         task_id = str(int(time.time() * 1000) + idx)
+                         cursor.execute(
+                             'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (%s, %s, %s, %s, %s, %s)',
+                             (task_id, project_id, name, start, end, '[]')
+                         )
+                     print(f"  ✓ Demo project loaded with {len(tasks)} sample tasks")
+                 else:
+                     print("  ✓ Demo user already exists")
+             except Exception as e:
+                 print(f"  ⚠ Demo user setup error: {e}")
+             
+             conn.commit()
+             cursor.close()
+             conn.close()
+             print("✓ PostgreSQL database schema initialized successfully")
         except Exception as e:
             print(f"✗ PostgreSQL initialization error: {e}")
     else:
@@ -1246,45 +1255,55 @@ def init_database():
                 )
             ''')
             
-            # Create demo user if it doesn't exist
-            cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
-            if cursor.fetchone()[0] == 0:
-                # Create demo user
-                salt = secrets.token_hex(16)
-                hash_obj = hashlib.pbkdf2_hmac('sha256', 'Demo@1234'.encode(), salt.encode(), 100000)
-                demo_password = f"{salt}${hash_obj.hex()}"
-                
-                cursor.execute(
-                    'INSERT INTO users (username, password) VALUES (?, ?)',
-                    ('demo', demo_password)
-                )
-                
-                # Create demo project
-                project_id = str(int(time.time() * 1000))
-                today = datetime.now().date()
-                cursor.execute(
-                    'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
-                    (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
-                )
-                
-                # Create sample tasks
-                tasks = [
-                    ('Design mockups', today, today + timedelta(days=3)),
-                    ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
-                    ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
-                    ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
-                    ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
-                ]
-                
-                for idx, (name, start, end) in enumerate(tasks):
-                    task_id = str(int(time.time() * 1000) + idx)
-                    cursor.execute(
-                        'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
-                        (task_id, project_id, name, start, end, '[]')
-                    )
-            
-            conn.commit()
-            print("✓ SQLite database schema initialized")
+             # Create demo user if it doesn't exist
+             try:
+                 cursor.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('demo',))
+                 demo_exists = cursor.fetchone()[0] > 0
+                 
+                 if not demo_exists:
+                     print("  Creating demo user...")
+                     # Create demo user with proper hashing (using the hash_password static method)
+                     handler = AuthHandler(None, None, None)
+                     demo_password = handler.hash_password('Demo@1234')
+                     
+                     cursor.execute(
+                         'INSERT INTO users (username, password, advanced_mode) VALUES (?, ?, ?)',
+                         ('demo', demo_password, 0)
+                     )
+                     print("  ✓ Demo user created")
+                     
+                     # Create demo project
+                     project_id = str(int(time.time() * 1000))
+                     today = datetime.now().date()
+                     cursor.execute(
+                         'INSERT INTO projects (id, owner, name, description) VALUES (?, ?, ?, ?)',
+                         (project_id, 'demo', 'Sample Project', 'This is a demo project to show how the app works')
+                     )
+                     print("  ✓ Demo project created")
+                     
+                     # Create sample tasks
+                     tasks = [
+                         ('Design mockups', today, today + timedelta(days=3)),
+                         ('Develop backend API', today + timedelta(days=2), today + timedelta(days=7)),
+                         ('Build frontend UI', today + timedelta(days=3), today + timedelta(days=10)),
+                         ('Integration testing', today + timedelta(days=8), today + timedelta(days=12)),
+                         ('Deploy to production', today + timedelta(days=11), today + timedelta(days=13)),
+                     ]
+                     
+                     for idx, (name, start, end) in enumerate(tasks):
+                         task_id = str(int(time.time() * 1000) + idx)
+                         cursor.execute(
+                             'INSERT INTO tasks (id, project_id, name, start_date, end_date, dependencies) VALUES (?, ?, ?, ?, ?, ?)',
+                             (task_id, project_id, name, start, end, '[]')
+                         )
+                     print(f"  ✓ Demo project loaded with {len(tasks)} sample tasks")
+                 else:
+                     print("  ✓ Demo user already exists")
+             except Exception as e:
+                 print(f"  ⚠ Demo user setup error: {e}")
+             
+             conn.commit()
+             print("✓ SQLite database schema initialized successfully")
         except Exception as e:
             print(f"✗ SQLite initialization error: {e}")
         finally:
