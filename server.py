@@ -29,6 +29,20 @@ else:
 # Session timeout in seconds (15 minutes)
 SESSION_TIMEOUT = 15 * 60
 
+# Allowed origins for CORS (whitelist specific origins, not wildcard)
+ALLOWED_ORIGINS = [
+    'http://localhost:5000',
+    'http://localhost:8000',
+    'http://localhost:8888',
+    'http://127.0.0.1:5000',
+    'http://127.0.0.1:8000',
+    'http://127.0.0.1:8888',
+    'https://project-roadmap.onrender.com',
+    os.environ.get('ALLOWED_ORIGIN', ''),  # Allow override via environment variable
+]
+# Filter out empty strings
+ALLOWED_ORIGINS = [origin for origin in ALLOWED_ORIGINS if origin]
+
 class AuthHandler(SimpleHTTPRequestHandler):
     """Handle authentication and project management"""
     
@@ -398,12 +412,17 @@ class AuthHandler(SimpleHTTPRequestHandler):
         return None
 
     def send_json(self, status_code, data):
-        """Send JSON response"""
-        self.send_response(status_code)
-        self.send_header('Content-type', 'application/json')
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+         """Send JSON response with CORS headers restricted to allowed origins"""
+         self.send_response(status_code)
+         self.send_header('Content-type', 'application/json')
+         
+         # Only allow CORS for whitelisted origins, not wildcard
+         origin = self.headers.get('Origin', '')
+         if origin in ALLOWED_ORIGINS:
+             self.send_header('Access-Control-Allow-Origin', origin)
+         
+         self.end_headers()
+         self.wfile.write(json.dumps(data).encode())
 
     def do_GET(self):
         parsed_path = urlparse(self.path)
@@ -993,11 +1012,18 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 self.send_json(400, {'error': str(e)})
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
-        self.end_headers()
+         self.send_response(200)
+         
+         # Only allow CORS for whitelisted origins, not wildcard
+         origin = self.headers.get('Origin', '')
+         if origin in ALLOWED_ORIGINS:
+             self.send_header('Access-Control-Allow-Origin', origin)
+         
+         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-CSRF-Token')
+         self.send_header('Access-Control-Allow-Credentials', 'true')
+         self.send_header('Access-Control-Max-Age', '86400')
+         self.end_headers()
 
     def translate_path(self, path):
         if path == '/' or path == '':
