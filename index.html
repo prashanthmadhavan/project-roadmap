@@ -1714,26 +1714,29 @@
                 return { swimlanes, taskToSwimlane };
             }
 
-            // Check if we need swimlanes
-            const useSwimLanes = detectParallelTasks(tasks);
-            let taskToSwimlane = {};
-            let swimLaneHeight = 50;
-            
-            if (useSwimLanes) {
-                const { swimlanes, taskToSwimlane: swimMap } = organizeSwimlanes(tasks);
-                taskToSwimlane = swimMap;
-                swimLaneHeight = Math.max(50, (height - margin.bottom) / swimlanes.length);
-            }
+             // Check if we need swimlanes
+             const useSwimLanes = detectParallelTasks(tasks);
+             let taskToSwimlane = {};
+             let swimLaneHeight = 50;
+             let swimLaneCount = 1;
+             
+             if (useSwimLanes) {
+                 const { swimlanes, taskToSwimlane: swimMap } = organizeSwimlanes(tasks);
+                 taskToSwimlane = swimMap;
+                 swimLaneCount = swimlanes.length;
+                 swimLaneHeight = Math.max(50, (height - margin.bottom) / swimLaneCount);
+             }
 
-            // Create yScale based on whether we use swimlanes
-            const yDomain = useSwimLanes 
-                ? tasks.map(t => t.id)
-                : tasks.map(t => t.id);
-            
-            const yScale = d3.scaleBand()
-                .domain(yDomain)
-                .range([0, useSwimLanes ? swimLaneHeight * Math.max(...Object.values(taskToSwimlane)) + swimLaneHeight : height - margin.bottom])
-                .padding(0.3);
+             // Create yScale - always use task IDs as domain
+             const yDomain = tasks.map(t => t.id);
+             
+             // Calculate the proper range height
+             const yRangeHeight = useSwimLanes ? swimLaneHeight * swimLaneCount : height - margin.bottom;
+             
+             const yScale = d3.scaleBand()
+                 .domain(yDomain)
+                 .range([0, yRangeHeight])
+                 .padding(0.3);
             
             // Store scale globally for drag handlers
             currentYScale = yScale;
@@ -1771,11 +1774,10 @@
                 weekendBlocks.push({ start: weekendStart, end: new Date(current) });
             }
             
-             // Draw swimlane backgrounds if using swimlanes
-             if (useSwimLanes) {
-                 const swimLaneCount = Math.max(...Object.values(taskToSwimlane)) + 1;
-                 svg.selectAll('.swimlane-bg')
-                     .data(d3.range(swimLaneCount))
+              // Draw swimlane backgrounds if using swimlanes
+              if (useSwimLanes) {
+                  svg.selectAll('.swimlane-bg')
+                      .data(d3.range(swimLaneCount))
                      .enter()
                      .append('rect')
                      .attr('class', 'swimlane-bg')
