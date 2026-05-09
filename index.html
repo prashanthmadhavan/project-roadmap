@@ -1658,9 +1658,81 @@
             // Store scales globally for drag handlers
             currentXScale = xScale;
 
+            // Detect parallel tasks and organize into swimlanes
+            function detectParallelTasks(tasks) {
+                // Check if any tasks overlap in time
+                let hasParallel = false;
+                for (let i = 0; i < tasks.length; i++) {
+                    for (let j = i + 1; j < tasks.length; j++) {
+                        const task1Start = new Date(tasks[i].startDate);
+                        const task1End = new Date(tasks[i].endDate);
+                        const task2Start = new Date(tasks[j].startDate);
+                        const task2End = new Date(tasks[j].endDate);
+                        
+                        // Check if tasks overlap
+                        if (task1Start < task2End && task2Start < task1End) {
+                            hasParallel = true;
+                            break;
+                        }
+                    }
+                    if (hasParallel) break;
+                }
+                return hasParallel;
+            }
+
+            function organizeSwimlanes(tasks) {
+                // Create swimlanes for parallel tasks
+                const swimlanes = [];
+                const taskToSwimlane = {};
+                
+                for (const task of tasks) {
+                    const taskStart = new Date(task.startDate);
+                    const taskEnd = new Date(task.endDate);
+                    let placed = false;
+                    
+                    // Try to place task in an existing swimlane
+                    for (let i = 0; i < swimlanes.length; i++) {
+                        const lastTask = swimlanes[i][swimlanes[i].length - 1];
+                        const lastTaskEnd = new Date(lastTask.endDate);
+                        
+                        // If task starts after last task in swimlane ends, place it there
+                        if (taskStart >= lastTaskEnd) {
+                            swimlanes[i].push(task);
+                            taskToSwimlane[task.id] = i;
+                            placed = true;
+                            break;
+                        }
+                    }
+                    
+                    // If not placed, create a new swimlane
+                    if (!placed) {
+                        swimlanes.push([task]);
+                        taskToSwimlane[task.id] = swimlanes.length - 1;
+                    }
+                }
+                
+                return { swimlanes, taskToSwimlane };
+            }
+
+            // Check if we need swimlanes
+            const useSwimLanes = detectParallelTasks(tasks);
+            let taskToSwimlane = {};
+            let swimLaneHeight = 50;
+            
+            if (useSwimLanes) {
+                const { swimlanes, taskToSwimlane: swimMap } = organizeSwimlanes(tasks);
+                taskToSwimlane = swimMap;
+                swimLaneHeight = Math.max(50, (height - margin.bottom) / swimlanes.length);
+            }
+
+            // Create yScale based on whether we use swimlanes
+            const yDomain = useSwimLanes 
+                ? tasks.map(t => t.id)
+                : tasks.map(t => t.id);
+            
             const yScale = d3.scaleBand()
-                .domain(tasks.map(t => t.id))
-                .range([0, height - margin.bottom])
+                .domain(yDomain)
+                .range([0, useSwimLanes ? swimLaneHeight * Math.max(...Object.values(taskToSwimlane)) + swimLaneHeight : height - margin.bottom])
                 .padding(0.3);
             
             // Store scale globally for drag handlers
@@ -1699,8 +1771,24 @@
                 weekendBlocks.push({ start: weekendStart, end: new Date(current) });
             }
             
-            // Draw weekend background blocks (visual representation of hidden weekends)
-            svg.selectAll('.weekend-block')
+             // Draw swimlane backgrounds if using swimlanes
+             if (useSwimLanes) {
+                 const swimLaneCount = Math.max(...Object.values(taskToSwimlane)) + 1;
+                 svg.selectAll('.swimlane-bg')
+                     .data(d3.range(swimLaneCount))
+                     .enter()
+                     .append('rect')
+                     .attr('class', 'swimlane-bg')
+                     .attr('x', 0)
+                     .attr('y', (d, i) => i * swimLaneHeight)
+                     .attr('width', width)
+                     .attr('height', swimLaneHeight)
+                     .attr('fill', i => i % 2 === 0 ? '#fafafa' : '#ffffff')
+                     .attr('opacity', 0.5);
+             }
+             
+             // Draw weekend background blocks (visual representation of hidden weekends)
+             svg.selectAll('.weekend-block')
                 .data(weekendBlocks)
                 .enter()
                 .append('rect')
@@ -1738,18 +1826,24 @@
 
              // Draw task bars (static, read-only mode)
              const bars = svg.selectAll('.gantt-bar')
-                   .data(tasks)
-                   .enter()
-                   .append('g')
-                   .attr('class', 'gantt-bar-group')
-                   .attr('data-task-id', d => d.id)
-                   .attr('cursor', 'move')
-                   .attr('draggable', 'true');
+                    .data(tasks)
+                    .enter()
+                    .append('g')
+                    .attr('class', 'gantt-bar-group')
+                    .attr('data-task-id', d => d.id)
+                    .attr('cursor', 'move')
+                    .attr('draggable', 'true');
 
             bars.append('rect')
                 .attr('class', 'gantt-bar')
                 .attr('x', d => xScale(new Date(d.startDate)))
-                .attr('y', d => yScale(d.id))
+                .attr('y', d => {
+                    const baseY = yScale(d.id);
+                    if (useSwimLanes && taskToSwimlane[d.id] !== undefined) {
+                        return baseY + (taskToSwimlane[d.id] * swimLaneHeight);
+                    }
+                    return baseY;
+                })
                 .attr('width', d => Math.max(100, xScale(new Date(d.endDate)) - xScale(new Date(d.startDate))))
                 .attr('height', yScale.bandwidth())
                 .attr('pointer-events', 'auto');
@@ -1758,7 +1852,13 @@
             bars.append('text')
                 .attr('class', 'gantt-bar-label')
                 .attr('x', d => xScale(new Date(d.startDate)) + 5)
-                .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
+                .attr('y', d => {
+                    const baseY = yScale(d.id) + yScale.bandwidth() / 2;
+                    if (useSwimLanes && taskToSwimlane[d.id] !== undefined) {
+                        return baseY + (taskToSwimlane[d.id] * swimLaneHeight);
+                    }
+                    return baseY;
+                })
                 .attr('dominant-baseline', 'middle')
                 .text(d => {
                     const barWidth = xScale(new Date(d.endDate)) - xScale(new Date(d.startDate));
@@ -1780,16 +1880,22 @@
                     return ''; // Too small to show text
                 });
 
-            // Draw task names on left (full names, only truncate if longer than ~18 chars)
-            svg.selectAll('.gantt-text')
-                .data(tasks)
-                .enter()
-                .append('text')
-                .attr('class', 'gantt-text')
-                .attr('x', -10)
-                .attr('y', d => yScale(d.id) + yScale.bandwidth() / 2)
-                .attr('text-anchor', 'end')
-                .attr('dominant-baseline', 'middle')
+             // Draw task names on left (full names, only truncate if longer than ~18 chars)
+             svg.selectAll('.gantt-text')
+                 .data(tasks)
+                 .enter()
+                 .append('text')
+                 .attr('class', 'gantt-text')
+                 .attr('x', -10)
+                 .attr('y', d => {
+                     const baseY = yScale(d.id) + yScale.bandwidth() / 2;
+                     if (useSwimLanes && taskToSwimlane[d.id] !== undefined) {
+                         return baseY + (taskToSwimlane[d.id] * swimLaneHeight);
+                     }
+                     return baseY;
+                 })
+                 .attr('text-anchor', 'end')
+                 .attr('dominant-baseline', 'middle')
                 .attr('title', d => d.name) // Show full name on hover
                 .text(d => {
                     // Only truncate if name is genuinely too long for the sidebar (>25 chars is safe)
@@ -1799,23 +1905,30 @@
                     return d.name;
                 });
 
-            // Draw dependency arrows
-            tasks.forEach(task => {
-                task.dependencies.forEach(depId => {
-                    const depTask = tasks.find(t => t.id === depId);
-                    if (depTask) {
-                        const x1 = xScale(new Date(depTask.endDate));
-                        const y1 = yScale(depId) + yScale.bandwidth() / 2;
-                        const x2 = xScale(new Date(task.startDate));
-                        const y2 = yScale(task.id) + yScale.bandwidth() / 2;
+             // Draw dependency arrows
+             tasks.forEach(task => {
+                 task.dependencies.forEach(depId => {
+                     const depTask = tasks.find(t => t.id === depId);
+                     if (depTask) {
+                         const x1 = xScale(new Date(depTask.endDate));
+                         let y1 = yScale(depId) + yScale.bandwidth() / 2;
+                         if (useSwimLanes && taskToSwimlane[depId] !== undefined) {
+                             y1 += taskToSwimlane[depId] * swimLaneHeight;
+                         }
+                         
+                         const x2 = xScale(new Date(task.startDate));
+                         let y2 = yScale(task.id) + yScale.bandwidth() / 2;
+                         if (useSwimLanes && taskToSwimlane[task.id] !== undefined) {
+                             y2 += taskToSwimlane[task.id] * swimLaneHeight;
+                         }
 
-                        const midX = (x1 + x2) / 2;
-                        svg.append('path')
-                            .attr('class', 'dependency-line')
-                            .attr('d', `M ${x1} ${y1} C ${midX} ${y1} ${midX} ${y2} ${x2} ${y2}`);
-                    }
-                });
-            });
+                         const midX = (x1 + x2) / 2;
+                         svg.append('path')
+                             .attr('class', 'dependency-line')
+                             .attr('d', `M ${x1} ${y1} C ${midX} ${y1} ${midX} ${y2} ${x2} ${y2}`);
+                     }
+                 });
+             });
 
              // Draw axes (weekly)
              // Draw x-axis with weekly labels
