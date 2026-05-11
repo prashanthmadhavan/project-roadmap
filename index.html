@@ -650,90 +650,12 @@
     </style>
 </head>
 <body>
-    <!-- Auth Container -->
-    <div class="auth-container" id="authContainer">
-        <!-- Login Form -->
-         <div id="loginForm">
-             <div class="auth-header">
-                 <h1>Task Gantt Chart</h1>
-                 <p>Sign in to your account</p>
-             </div>
 
-             <div class="error-message" id="loginError"></div>
-
-             <div style="background: #e8f5e9; border-left: 4px solid #4CAF50; padding: 12px; border-radius: 4px; margin-bottom: 20px; font-size: 13px; color: #2e7d32;">
-                 <strong>Try Demo Account:</strong><br>
-                 Username: <code style="background: white; padding: 2px 4px; border-radius: 2px;">demo</code><br>
-                 Password: <code style="background: white; padding: 2px 4px; border-radius: 2px;">Demo@1234</code>
-             </div>
-
-             <div class="form-group">
-                 <label>Username</label>
-                 <input type="text" id="loginUsername" placeholder="Enter username">
-             </div>
-
-             <div class="form-group">
-                 <label>Password</label>
-                 <input type="password" id="loginPassword" placeholder="Enter password">
-             </div>
-
-             <button onclick="login()">Sign In</button>
-
-             <div class="auth-toggle">
-                 Don't have an account? <a onclick="switchToRegister()">Create one</a>
-             </div>
-         </div>
-
-        <!-- Register Form -->
-        <div id="registerForm" style="display: none;">
-            <div class="auth-header">
-                <h1>Task Gantt Chart</h1>
-                <p>Create your account</p>
-            </div>
-
-            <div class="error-message" id="registerError"></div>
-
-            <div class="form-group">
-                <label>Username</label>
-                <input type="text" id="registerUsername" placeholder="Choose a username (min 3 chars)">
-            </div>
-
-            <div class="form-group">
-                <label>Password</label>
-                <input type="password" id="registerPassword" placeholder="Enter password" oninput="checkPasswordRequirements()">
-            </div>
-
-            <div class="password-requirements" id="passwordRequirements">
-                <div class="requirement">
-                    <span class="requirement-check" id="checkLength">✓</span>
-                    At least 8 characters
-                </div>
-                <div class="requirement">
-                    <span class="requirement-check" id="checkUpper">✓</span>
-                    Uppercase letters (A-Z)
-                </div>
-                <div class="requirement">
-                    <span class="requirement-check" id="checkLower">✓</span>
-                    Lowercase letters (a-z)
-                </div>
-            </div>
-
-            <button onclick="register()" id="registerBtn">Create Account</button>
-
-            <div class="auth-toggle">
-                Already have an account? <a onclick="switchToLogin()">Sign in</a>
-            </div>
-        </div>
-    </div>
 
     <!-- Main App -->
     <div class="app-container" id="appContainer">
         <div class="app-header">
             <h1>📊 Task Gantt Chart</h1>
-              <div class="user-info">
-                  <span class="username" id="userDisplay"></span>
-                  <button class="logout-btn" onclick="logout()">Logout</button>
-              </div>
         </div>
 
         <div class="main-layout">
@@ -848,10 +770,9 @@
 
 
       <script>
-         let authToken = localStorage.getItem('authToken');
          let currentProjectId = null;
           let projects = [];
-           let currentUser = null;
+           let currentUser = 'public';
            let currentDependencies = [];
          
           // Gantt chart scales (updated during renderGantt)
@@ -978,208 +899,30 @@
 
          // Check if already logged in
         window.addEventListener('load', async () => {
-            if (authToken) {
-                await checkAuth();
-            } else {
-                showAuthUI();
-            }
+            // Load app directly without authentication
+            showAppUI();
+            await loadProjects();
         });
 
-         async function checkAuth() {
-              try {
-                  const response = await apiCall('/api/auth/me', {
-                      headers: { 'Authorization': `Bearer ${authToken}` }
-                  });
-                  if (response.ok) {
-                      const data = await response.json();
-                      currentUser = data.username;
-                      showAppUI();
-                      loadProjects();
-                  } else {
-                      localStorage.removeItem('authToken');
-                      authToken = null;
-                      showAuthUI();
-                  }
-              } catch (error) {
-                  console.error('Auth check failed:', error);
-                  showAuthUI();
-              }
-         }
 
-        function showAuthUI() {
-            document.body.classList.remove('authenticated');
-            document.getElementById('authContainer').classList.remove('hidden');
-            document.getElementById('appContainer').classList.remove('show');
-        }
 
          function showAppUI() {
-             document.body.classList.add('authenticated');
-             document.getElementById('authContainer').classList.add('hidden');
-             document.getElementById('appContainer').classList.add('show');
-             document.getElementById('userDisplay').textContent = `👤 ${currentUser}`;
-             
-             // Start session monitoring when app UI is shown
-             resetSessionTimer();
-             startSessionMonitor();
-         }
+              document.body.classList.add('authenticated');
+              document.getElementById('appContainer').classList.add('show');
+              
+              // Start session monitoring when app UI is shown
+              resetSessionTimer();
+              startSessionMonitor();
+          }
 
-          function switchToRegister() {
-            document.getElementById('loginForm').style.display = 'none';
-            document.getElementById('registerForm').style.display = 'block';
-        }
 
-        function switchToLogin() {
-            document.getElementById('loginForm').style.display = 'block';
-            document.getElementById('registerForm').style.display = 'none';
-        }
 
-        function checkPasswordRequirements() {
-            const password = document.getElementById('registerPassword').value;
-            
-            const hasLength = password.length >= 8;
-            const hasUpper = /[A-Z]/.test(password);
-            const hasLower = /[a-z]/.test(password);
 
-            document.getElementById('checkLength').className = hasLength ? 'requirement-check met' : 'requirement-check';
-            document.getElementById('checkUpper').className = hasUpper ? 'requirement-check met' : 'requirement-check';
-            document.getElementById('checkLower').className = hasLower ? 'requirement-check met' : 'requirement-check';
 
-            const isValid = hasLength && hasUpper && hasLower;
-            document.getElementById('registerBtn').disabled = !isValid;
-        }
-
-        async function login() {
-            const username = document.getElementById('loginUsername').value.trim();
-            const password = document.getElementById('loginPassword').value;
-            const errorDiv = document.getElementById('loginError');
-
-            if (!username || !password) {
-                errorDiv.textContent = 'Please enter both username and password';
-                errorDiv.classList.add('show');
-                return;
-            }
-
-            try {
-                const response = await apiCall('/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    errorDiv.textContent = data.error || 'Login failed';
-                    errorDiv.classList.add('show');
-                    return;
-                }
-
-                authToken = data.token;
-                localStorage.setItem('authToken', authToken);
-                currentUser = data.username;
-                
-                // Clear old data before loading new user's projects
-                projects = [];
-                currentProjectId = null;
-                
-                // Show app UI and load projects
-                showAppUI();
-                await loadProjects();
-            } catch (error) {
-                errorDiv.textContent = 'Connection error: ' + error.message;
-                errorDiv.classList.add('show');
-            }
-        }
-
-         async function register() {
-             const username = document.getElementById('registerUsername').value.trim();
-             const password = document.getElementById('registerPassword').value;
-             const errorDiv = document.getElementById('registerError');
-
-             errorDiv.classList.remove('show');
-
-             if (!username || !password) {
-                 errorDiv.textContent = 'Please enter username and password';
-                 errorDiv.classList.add('show');
-                 return;
-             }
-
-             try {
-                 const response = await apiCall('/api/auth/register', {
-                     method: 'POST',
-                     headers: { 'Content-Type': 'application/json' },
-                     body: JSON.stringify({ username, password })
-                 });
-
-                 const data = await response.json();
-
-                 if (!response.ok) {
-                     errorDiv.textContent = data.error || 'Registration failed';
-                     errorDiv.classList.add('show');
-                     return;
-                 }
-
-                 authToken = data.token;
-                 localStorage.setItem('authToken', authToken);
-                 currentUser = data.username;
-                 
-                 // Clear old data before loading new user's projects (Defect #6 fix)
-                 projects = [];
-                 currentProjectId = null;
-
-                 setTimeout(() => {
-                     showAppUI();
-                     loadProjects();
-                 }, 1500);
-             } catch (error) {
-                 errorDiv.textContent = 'Connection error';
-                 errorDiv.classList.add('show');
-             }
-         }
-
-         async function logout() {
-             // Clear session monitor
-             if (sessionCheckInterval) clearInterval(sessionCheckInterval);
-             
-             // Send logout request to server to invalidate session
-             try {
-                 await apiCall('/api/auth/logout', {
-                     method: 'POST',
-                     headers: { 'Authorization': `Bearer ${authToken}` }
-                 });
-             } catch (error) {
-                 console.error('Logout error (continuing):', error);
-             }
-             
-             // Clear all client-side data
-             authToken = null;
-             localStorage.removeItem('authToken');
-             currentUser = null;
-             projects = [];
-             currentProjectId = null;
-             currentDependencies = [];
-             
-             // Clear all UI data
-             document.getElementById('projectsList').innerHTML = '';
-             document.getElementById('tasksList').innerHTML = '';
-             document.getElementById('gantt-container').innerHTML = '';
-             document.getElementById('loginUsername').value = '';
-             document.getElementById('loginPassword').value = '';
-             
-             // Close any open modals
-             const editModal = document.getElementById('editTaskModal');
-             if (editModal) {
-                 editModal.classList.remove('show');
-             }
-             
-             showAuthUI();
-         }
 
         async function loadProjects() {
              try {
-                 const response = await apiCall('/api/projects', {
-                     headers: { 'Authorization': `Bearer ${authToken}` }
-                 });
+                 const response = await apiCall('/api/projects', {});
                  
                  if (!response.ok) {
                      throw new Error(`Server error: ${response.status}`);
@@ -1209,8 +952,7 @@
                  const response = await apiCall('/api/projects', {
                      method: 'POST',
                      headers: {
-                         'Content-Type': 'application/json',
-                         'Authorization': `Bearer ${authToken}`
+                         'Content-Type': 'application/json'
                      },
                      body: JSON.stringify({ name, description })
                  });
@@ -1356,8 +1098,7 @@
                  const response = await apiCall(`/api/projects/${currentProjectId}/tasks`, {
                      method: 'POST',
                      headers: {
-                         'Content-Type': 'application/json',
-                         'Authorization': `Bearer ${authToken}`
+                         'Content-Type': 'application/json'
                      },
                      body: JSON.stringify({
                          name,
@@ -1398,8 +1139,7 @@
                    
                    // Send delete request to server
                    await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
-                       method: 'DELETE',
-                       headers: { 'Authorization': `Bearer ${authToken}` }
+                       method: 'DELETE'
                    });
                } catch (error) {
                    console.error('Error deleting task:', error);
@@ -1952,8 +1692,7 @@
                  const response = await apiCall(`/api/projects/${currentProjectId}/tasks/${taskId}`, {
                      method: 'PUT',
                      headers: {
-                         'Content-Type': 'application/json',
-                         'Authorization': `Bearer ${authToken}`
+                         'Content-Type': 'application/json'
                      },
                      body: JSON.stringify({
                          name: taskData.name,
