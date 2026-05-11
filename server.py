@@ -485,16 +485,10 @@ class AuthHandler(SimpleHTTPRequestHandler):
             else:
                 self.send_json(401, {'error': 'Not authenticated'})
         
-        # GET /api/projects - Get user's projects
+        # GET /api/projects - Get all projects (public access)
         elif parsed_path.path == '/api/projects':
-            username = self.get_current_user()
-            if not username:
-                self.send_json(401, {'error': 'Not authenticated'})
-                return
-            
             all_projects = self.load_projects()
-            user_projects = [p for p in all_projects if p.get('owner') == username]
-            self.send_json(200, user_projects)
+            self.send_json(200, all_projects)
         
         # Serve static files
         elif self.path == '/' or self.path == '':
