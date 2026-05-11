@@ -426,7 +426,7 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 conn.close()
                 return result[0] if result else False
             else:
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
                 cursor.execute('SELECT advanced_mode FROM users WHERE username = ?', (username,))
                 result = cursor.fetchone()
@@ -448,9 +448,9 @@ class AuthHandler(SimpleHTTPRequestHandler):
                 cursor.close()
                 conn.close()
             else:
-                conn = sqlite3.connect(DB_PATH)
+                conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
-                cursor.execute('UPDATE users SET advanced_mode = ? WHERE username = ?', 
+                cursor.execute('UPDATE users SET advanced_mode = ? WHERE username = ?',
                                 (1 if advanced_mode else 0, username))
                 conn.commit()
                 cursor.close()
