@@ -901,24 +901,32 @@
 
 
 
-        async function loadProjects() {
-             try {
-                 const response = await apiCall('/api/projects', {});
-                 
-                 if (!response.ok) {
-                     throw new Error(`Server error: ${response.status}`);
-                 }
-                 
-                 projects = await response.json() || [];
-                 renderProjectsList();
-                 if (projects.length > 0 && !currentProjectId) {
-                     selectProject(projects[0].id);
-                 }
-             } catch (error) {
-                 console.error('Error loading projects:', error);
-                 alert('Failed to load projects. Please check your connection and refresh.');
-             }
-         }
+         async function loadProjects() {
+              try {
+                  console.log('Starting loadProjects...');
+                  const response = await apiCall('/api/projects', {});
+                  console.log('Got response:', response.status, response.statusText);
+                  
+                  if (!response.ok) {
+                      const errorText = await response.text();
+                      console.error('Response error text:', errorText);
+                      throw new Error(`Server error: ${response.status} - ${errorText}`);
+                  }
+                  
+                  const data = await response.json();
+                  console.log('Parsed JSON, got', data.length || 0, 'projects');
+                  projects = data || [];
+                  console.log('Set projects array, length:', projects.length);
+                  renderProjectsList();
+                  if (projects.length > 0 && !currentProjectId) {
+                      selectProject(projects[0].id);
+                  }
+              } catch (error) {
+                  console.error('Error loading projects:', error);
+                  console.error('Stack:', error.stack);
+                  alert('Failed to load projects. Error: ' + error.message);
+              }
+          }
 
         async function addProject() {
             const name = document.getElementById('projectName').value.trim();
