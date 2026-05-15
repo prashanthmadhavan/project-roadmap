@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "project_roadmap",
+  "project_id": "8e465fa4-0316-4285-9e1b-53165c5592b9"
+}
